@@ -1,0 +1,171 @@
+name: 'Polyglot i18n Scanner'
+description: 'Detect untranslated strings in your codebase and post a coverage report on PRs'
+author: 'Polyglot'
+
+branding:
+  icon: 'globe'
+  color: 'blue'
+
+inputs:
+  config_path:
+    description: 'Path to polyglot.toml (default: auto-detect)'
+    required: false
+    default: ''
+  fail_on_untranslated:
+    description: 'Fail the check if untranslated strings are found'
+    required: false
+    default: 'true'
+  comment:
+    description: 'Post a PR comment with the scan results'
+    required: false
+    default: 'true'
+  github_token:
+    description: 'GitHub token for posting PR comments'
+    required: false
+    default: ${{ github.token }}
+  version:
+    description: 'Polyglot CLI version to install (default: latest)'
+    required: false
+    default: 'latest'
+
+outputs:
+  total_strings:
+    description: 'Total number of untranslated strings found'
+    value: ${{ steps.scan.outputs.total_strings }}
+  files_scanned:
+    description: 'Number of files scanned'
+    value: ${{ steps.scan.outputs.files_scanned }}
+  files_with_strings:
+    description: 'Number of files with untranslated strings'
+    value: ${{ steps.scan.outputs.files_with_strings }}
+  has_untranslated:
+    description: 'Whether untranslated strings were found (true/false)'
+    value: ${{ steps.scan.outputs.has_untranslated }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Polyglot CLI
+      shell: bash
+      run: |
+        if command -v polyglot &> /dev/null; then
+          echo "Polyglot CLI already installed"
+          exit 0
+        fi
+
+        # Try binary install first (fast)
+        VERSION="${{ inputs.version }}"
+        if [ "$VERSION" = "latest" ]; then
+          export POLYGLOT_VERSION=""
+        else
+          export POLYGLOT_VERSION="$VERSION"
+        fi
+        export POLYGLOT_INSTALL="$HOME/.local/bin"
+
+        curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh" | bash 2>/dev/null || {
+          echo "Binary install not available, building from source..."
+
+          # Install Rust if needed
+          if ! command -v cargo &> /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            source "$HOME/.cargo/env"
+          fi
+
+          if [ -f "cli/Cargo.toml" ]; then
+            cargo install --path cli
+          else
+            cargo install polyglot-cli
+          fi
+        }
+
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Run Polyglot scan
+      id: scan
+      shell: bash
+      run: |
+        set +e
+        SCAN_OUTPUT=$(polyglot scan --format json 2>&1)
+        SCAN_EXIT=$?
+        set -e
+
+        # Save raw output
+        echo "$SCAN_OUTPUT" > /tmp/polyglot-scan.json
+
+        # Parse summary from JSON
+        if echo "$SCAN_OUTPUT" | jq -e '.summary' > /dev/null 2>&1; then
+          TOTAL=$(echo "$SCAN_OUTPUT" | jq -r '.summary.total_strings')
+          FILES_SCANNED=$(echo "$SCAN_OUTPUT" | jq -r '.summary.files_scanned')
+          FILES_WITH=$(echo "$SCAN_OUTPUT" | jq -r '.summary.files_with_strings')
+        else
+          TOTAL=0
+          FILES_SCANNED=0
+          FILES_WITH=0
+        fi
+
+        echo "total_strings=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "files_scanned=$FILES_SCANNED" >> "$GITHUB_OUTPUT"
+        echo "files_with_strings=$FILES_WITH" >> "$GITHUB_OUTPUT"
+
+        if [ "$TOTAL" -gt 0 ]; then
+          echo "has_untranslated=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_untranslated=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        echo "scan_exit=$SCAN_EXIT" >> "$GITHUB_OUTPUT"
+
+    - name: Generate PR comment
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      id: comment_body
+      shell: bash
+      run: |
+        ${{ github.action_path }}/scripts/format-comment.sh \
+          /tmp/polyglot-scan.json \
+          "${{ steps.scan.outputs.total_strings }}" \
+          "${{ steps.scan.outputs.files_scanned }}" \
+          "${{ steps.scan.outputs.files_with_strings }}" \
+          > /tmp/polyglot-comment.md
+
+    - name: Post or update PR comment
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const fs = require('fs');
+          const body = fs.readFileSync('/tmp/polyglot-comment.md', 'utf8');
+          const marker = '<!-- polyglot-scan-report -->';
+
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+
+          const existing = comments.find(c => c.body.includes(marker));
+
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existing.id,
+              body: marker + '\n' + body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: marker + '\n' + body,
+            });
+          }
+
+    - name: Check result
+      if: inputs.fail_on_untranslated == 'true'
+      shell: bash
+      run: |
+        if [ "${{ steps.scan.outputs.has_untranslated }}" = "true" ]; then
+          echo "::error::Found ${{ steps.scan.outputs.total_strings }} untranslated string(s)"
+          exit 1
+        fi

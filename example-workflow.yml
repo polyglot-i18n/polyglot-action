@@ -1,0 +1,28 @@
+# Example: .github/workflows/polyglot.yml
+#
+# Runs Polyglot i18n scanner on pull requests and posts a comment
+# with the translation coverage report.
+
+name: i18n Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - '*.tsx'
+      - '*.jsx'
+      - '*.ts'
+      - '*.js'
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Polyglot i18n Scan
+        uses: polyglot-dev/github-action@v1
+        with:
+          fail_on_untranslated: 'true'
+          comment: 'true'
