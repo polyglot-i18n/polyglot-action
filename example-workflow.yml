@@ -22,7 +22,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Polyglot i18n Scan
-        uses: polyglot-dev/github-action@v1
+        uses: polyglot-i18n/polyglot-action@v1
         with:
+          api-key: ${{ secrets.POLYGLOT_API_KEY }}
+          coverage-threshold: '100'
           fail_on_untranslated: 'true'
           comment: 'true'

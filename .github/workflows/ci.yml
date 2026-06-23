@@ -15,3 +15,6 @@ jobs:
 
       - name: Run format-comment tests
         run: ./tests/test-format-comment.sh
+
+      - name: Run inputs contract tests
+        run: ./tests/test-inputs-contract.sh

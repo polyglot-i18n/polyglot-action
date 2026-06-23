@@ -7,6 +7,14 @@ branding:
   color: 'blue'
 
 inputs:
+  api-key:
+    description: 'Polyglot API key (POLYGLOT_API_KEY). If empty, the CLI runs in guest mode.'
+    required: false
+    default: ''
+  coverage-threshold:
+    description: 'Minimum translation coverage percentage required to pass (0-100). The check fails if average coverage is below this value.'
+    required: false
+    default: '100'
   config_path:
     description: 'Path to polyglot.toml (default: auto-detect)'
     required: false
@@ -41,6 +49,9 @@ outputs:
   has_untranslated:
     description: 'Whether untranslated strings were found (true/false)'
     value: ${{ steps.scan.outputs.has_untranslated }}
+  average_coverage:
+    description: 'Average translation coverage percentage across configured languages'
+    value: ${{ steps.coverage.outputs.average_coverage }}
 
 runs:
   using: 'composite'
@@ -62,7 +73,7 @@ runs:
         fi
         export POLYGLOT_INSTALL="$HOME/.local/bin"
 
-        curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh" | bash 2>/dev/null || {
+        curl -fsSL "https://getpolyglot.ai/install.sh" | sh 2>/dev/null || {
           echo "Binary install not available, building from source..."
 
           # Install Rust if needed
@@ -83,6 +94,8 @@ runs:
     - name: Run Polyglot scan
       id: scan
       shell: bash
+      env:
+        POLYGLOT_API_KEY: ${{ inputs.api-key }}
       run: |
         set +e
         SCAN_OUTPUT=$(polyglot scan --format json 2>&1)
@@ -160,6 +173,40 @@ runs:
               body: marker + '\n' + body,
             });
           }
+
+    - name: Check coverage threshold
+      id: coverage
+      shell: bash
+      env:
+        POLYGLOT_API_KEY: ${{ inputs.api-key }}
+      run: |
+        THRESHOLD="${{ inputs.coverage-threshold }}"
+
+        # A threshold of 0 disables the coverage gate.
+        if [ -z "$THRESHOLD" ] || [ "$THRESHOLD" = "0" ]; then
+          echo "Coverage gate disabled (coverage-threshold=$THRESHOLD)"
+          exit 0
+        fi
+
+        set +e
+        COV_OUTPUT=$(polyglot coverage --format json 2>&1)
+        set -e
+
+        if echo "$COV_OUTPUT" | jq -e '.average_coverage' > /dev/null 2>&1; then
+          AVG=$(echo "$COV_OUTPUT" | jq -r '.average_coverage')
+        else
+          echo "::warning::Could not read coverage report; skipping coverage gate"
+          exit 0
+        fi
+
+        echo "average_coverage=$AVG" >> "$GITHUB_OUTPUT"
+        echo "Average coverage: ${AVG}% (threshold: ${THRESHOLD}%)"
+
+        # Compare with awk for float-safe comparison.
+        if awk "BEGIN { exit !($AVG < $THRESHOLD) }"; then
+          echo "::error::Translation coverage ${AVG}% is below the required threshold of ${THRESHOLD}%"
+          exit 1
+        fi
 
     - name: Check result
       if: inputs.fail_on_untranslated == 'true'
