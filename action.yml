@@ -73,32 +73,80 @@ runs:
           exit 0
         fi
 
-        # Try binary install first (fast)
+        RELEASES_BASE_URL="https://releases.getpolyglot.ai"
+        BINARY_NAME="polyglot"
+        INSTALL_DIR="$HOME/.local/bin"
+
+        # Release dirs are tag-named ("v0.1.6"); the rolling alias is bare ("latest").
         VERSION="${{ inputs.version }}"
-        if [ "$VERSION" = "latest" ]; then
-          export POLYGLOT_VERSION=""
-        else
-          export POLYGLOT_VERSION="$VERSION"
+        if [ "$VERSION" != "latest" ]; then
+          VERSION="v${VERSION#v}"
         fi
-        export POLYGLOT_INSTALL="$HOME/.local/bin"
 
-        curl -fsSL "https://getpolyglot.ai/install.sh" | sh 2>/dev/null || {
-          echo "Binary install not available, building from source..."
+        # Detect platform -> release target triple (matches install.sh + release.yml).
+        OS="$(uname -s)"; ARCH="$(uname -m)"
+        case "$OS" in
+          Linux)
+            case "$ARCH" in
+              x86_64) TARGET="x86_64-unknown-linux-gnu" ;;
+              *) echo "::error::Unsupported Linux architecture: $ARCH"; exit 1 ;;
+            esac ;;
+          Darwin)
+            case "$ARCH" in
+              arm64|aarch64) TARGET="aarch64-apple-darwin" ;;
+              x86_64) TARGET="x86_64-apple-darwin" ;;
+              *) echo "::error::Unsupported macOS architecture: $ARCH"; exit 1 ;;
+            esac ;;
+          *) echo "::error::Unsupported OS: $OS"; exit 1 ;;
+        esac
 
-          # Install Rust if needed
-          if ! command -v cargo &> /dev/null; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            source "$HOME/.cargo/env"
+        # Download the prebuilt binary straight from R2 — the reliable source.
+        # (Do NOT pipe getpolyglot.ai/install.sh: that path serves the marketing
+        # site, not the script.)
+        url="$RELEASES_BASE_URL/$VERSION/$BINARY_NAME-$VERSION-$TARGET.tar.gz"
+        tmp="$(mktemp -d)"
+        echo "Installing Polyglot CLI from $url"
+
+        if curl -fsSL "$url" -o "$tmp/polyglot.tar.gz"; then
+          # Verify the checksum when the sidecar is available.
+          expected="$(curl -fsSL "$url.sha256" 2>/dev/null | awk '{print $1}')"
+          if [ -n "$expected" ]; then
+            if command -v sha256sum &>/dev/null; then
+              actual="$(sha256sum "$tmp/polyglot.tar.gz" | awk '{print $1}')"
+            else
+              actual="$(shasum -a 256 "$tmp/polyglot.tar.gz" | awk '{print $1}')"
+            fi
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::Checksum mismatch for $url (expected $expected, got $actual)"
+              exit 1
+            fi
           fi
-
+          tar xzf "$tmp/polyglot.tar.gz" -C "$tmp"
+          mkdir -p "$INSTALL_DIR"
+          mv "$tmp/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+          chmod +x "$INSTALL_DIR/$BINARY_NAME"
+          echo "Installed $BINARY_NAME $VERSION ($TARGET)"
+        else
+          # R2 is the only public install path: the CLI repo is private and
+          # isn't on crates.io, so there's no source build for outside consumers.
+          # Build from source ONLY when run inside the monorepo (local checkout);
+          # otherwise fail clearly instead of attempting a doomed clone.
           if [ -f "cli/Cargo.toml" ]; then
-            cargo install --path cli
+            echo "::warning::Prebuilt binary unavailable at $url; building from the local checkout"
+            if ! command -v cargo &> /dev/null; then
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+              source "$HOME/.cargo/env"
+            fi
+            cargo install --path cli --root "$HOME/.local"
           else
-            cargo install polyglot-cli
+            echo "::error::Could not download the Polyglot CLI from $url"
+            echo "::error::Check that version '${{ inputs.version }}' exists at https://releases.getpolyglot.ai and that the runner can reach it."
+            exit 1
           fi
-        }
+        fi
+        rm -rf "$tmp"
 
-        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
 
     - name: Run Polyglot scan
       id: scan
