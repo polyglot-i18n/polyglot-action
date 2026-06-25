@@ -18,3 +18,15 @@ jobs:
 
       - name: Run inputs contract tests
         run: ./tests/test-inputs-contract.sh
+
+      # Install the released CLI so the contract test runs against the real
+      # `scan`/`coverage --format json` shape the action parses. Best-effort —
+      # if the CLI isn't installable the contract test skips (exit 0).
+      - name: Install polyglot CLI
+        continue-on-error: true
+        run: |
+          curl -fsSL https://getpolyglot.ai/install.sh | sh || true
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run CLI contract tests (real scan/coverage shape)
+        run: ./tests/test-cli-contract.sh

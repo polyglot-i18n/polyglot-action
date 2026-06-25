@@ -1,0 +1,60 @@
+name: Self-test (e2e)
+
+# Runs the action against itself: a fixture project with known untranslated
+# strings is scanned by `uses: ./`, and we assert the outputs the action
+# documents. This catches breakage in the composite's own wiring (CLI install,
+# scan, output parsing) that the unit/contract tests can't — the part that
+# otherwise only fails on a real customer PR.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: Action end-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create a fixture project with untranslated strings
+        run: |
+          mkdir -p src
+          cat > polyglot.toml <<'EOF'
+          [project]
+          name = "self-test"
+          framework = "nextjs"
+          source_language = "en"
+          target_languages = ["de"]
+          EOF
+          cat > src/page.tsx <<'EOF'
+          export default function Page() {
+            return (
+              <div>
+                <h1>Welcome to our store</h1>
+                <button>Add to cart</button>
+              </div>
+            );
+          }
+          EOF
+
+      - name: Run the action against the fixture
+        id: scan
+        uses: ./
+        with:
+          # Don't fail the job on the (intentional) untranslated strings, and
+          # don't try to comment on a push — we only assert the outputs here.
+          fail_on_untranslated: 'false'
+          coverage-threshold: '0'
+          comment: 'false'
+
+      - name: Assert the action's outputs
+        run: |
+          echo "total_strings    = ${{ steps.scan.outputs.total_strings }}"
+          echo "files_scanned    = ${{ steps.scan.outputs.files_scanned }}"
+          echo "has_untranslated = ${{ steps.scan.outputs.has_untranslated }}"
+          test "${{ steps.scan.outputs.has_untranslated }}" = "true"
+          test "${{ steps.scan.outputs.total_strings }}" -ge 1
+          test "${{ steps.scan.outputs.files_scanned }}" -ge 1
