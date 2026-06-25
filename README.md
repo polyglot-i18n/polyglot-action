@@ -51,6 +51,7 @@ The action runs `polyglot scan` / `polyglot coverage` over the whole checked-out
 | `config_path` | no | `''` | Path to `polyglot.toml` (default: auto-detect). |
 | `github_token` | no | `${{ github.token }}` | GitHub token used to post PR comments. |
 | `version` | no | `'latest'` | Polyglot CLI version to install. |
+| `sync` | no | `'false'` | After scanning, run `polyglot push` to sync this repo's existing translations into your project's backend memory. Requires `api-key`. Runs **only** on a push to the default branch — never on `pull_request`. |
 
 ## Outputs
 
@@ -65,3 +66,26 @@ The action runs `polyglot scan` / `polyglot coverage` over the whole checked-out
 ## Getting an API key
 
 Create a project and copy its API key from the [Polyglot dashboard](https://getpolyglot.ai). Store it as a repository secret (e.g. `POLYGLOT_API_KEY`) and pass it via `api-key`.
+
+## Keeping the dashboard in sync
+
+Your repo's locale files and your project's backend translation memory are two stores that can drift — if you translate locally, the dashboard can re-translate work you already have. Enable `sync` on a push to your default branch to reconcile them automatically after every merge:
+
+```yaml
+on:
+  pull_request:        # PRs: scan + coverage gate (read-only)
+  push:
+    branches: [main]   # merges: also push existing translations into memory
+
+jobs:
+  polyglot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: polyglot-i18n/polyglot-action@v1
+        with:
+          api-key: ${{ secrets.POLYGLOT_API_KEY }}
+          sync: 'true'
+```
+
+`sync` is gated to default-branch pushes, so un-merged PR translations are never written to shared memory. It needs `api-key` (push is authenticated); without one it logs a warning and skips.

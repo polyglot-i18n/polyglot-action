@@ -35,6 +35,15 @@ inputs:
     description: 'Polyglot CLI version to install (default: latest)'
     required: false
     default: 'latest'
+  sync:
+    description: >-
+      After scanning, run `polyglot push` to sync this repo's existing
+      translations into your project's backend memory (so the dashboard stops
+      re-translating work you already have). Requires `api-key`. Runs ONLY on a
+      push to the repository's default branch — never on pull_request — so
+      un-merged PR translations are never written to shared memory.
+    required: false
+    default: 'false'
 
 outputs:
   total_strings:
@@ -216,3 +225,23 @@ runs:
           echo "::error::Found ${{ steps.scan.outputs.total_strings }} untranslated string(s)"
           exit 1
         fi
+
+    # Post-merge sync (opt-in). Gated to a push on the default branch so it never
+    # writes un-merged PR translations into shared memory. `always()` lets it run
+    # even when the coverage/untranslated gates above failed — a merge has landed,
+    # so the repo's translations should reach memory regardless.
+    - name: Sync translations to project memory
+      id: sync
+      if: >-
+        always() && inputs.sync == 'true' && github.event_name == 'push' &&
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      shell: bash
+      env:
+        POLYGLOT_API_KEY: ${{ inputs.api-key }}
+      run: |
+        if [ -z "$POLYGLOT_API_KEY" ]; then
+          echo "::warning::sync is enabled but no api-key was provided — skipping (polyglot push needs authentication)."
+          exit 0
+        fi
+        echo "Syncing this repo's existing translations into your project's memory..."
+        polyglot push
