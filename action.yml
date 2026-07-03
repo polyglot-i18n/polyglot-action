@@ -127,12 +127,13 @@ runs:
           return 0
         }
 
-        fetch_pair ""
-        status=$?
+        # `|| status=$?` keeps the -e shell alive on a nonzero return.
+        status=0
+        fetch_pair "" || status=$?
         if [ "$status" = "2" ]; then
           echo "::warning::Checksum mismatch for $url (stale CDN cache?) — retrying with a cache-buster"
-          fetch_pair "?cb=$(date +%s)$RANDOM"
-          status=$?
+          status=0
+          fetch_pair "?cb=$(date +%s)$RANDOM" || status=$?
         fi
 
         if [ "$status" = "0" ]; then
