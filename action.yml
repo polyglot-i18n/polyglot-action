@@ -107,19 +107,38 @@ runs:
         tmp="$(mktemp -d)"
         echo "Installing Polyglot CLI from $url"
 
-        if curl -fsSL "$url" -o "$tmp/polyglot.tar.gz"; then
-          # Verify the checksum when the sidecar is available.
-          expected="$(curl -fsSL "$url.sha256" 2>/dev/null | awk '{print $1}')"
+        # Download tarball + sidecar and verify. Right after a release the
+        # CDN edge can briefly serve a STALE `latest` tarball next to a fresh
+        # sidecar (verified live: v0.6.3 bytes under a v0.6.4 checksum) — so
+        # on mismatch, retry ONCE with a cache-busting query string, which
+        # bypasses the edge cache and reads the R2 origin.
+        fetch_pair() {
+          local bust="$1"
+          curl -fsSL "$url$bust" -o "$tmp/polyglot.tar.gz" || return 1
+          expected="$(curl -fsSL "$url.sha256$bust" 2>/dev/null | awk '{print $1}')"
           if [ -n "$expected" ]; then
             if command -v sha256sum &>/dev/null; then
               actual="$(sha256sum "$tmp/polyglot.tar.gz" | awk '{print $1}')"
             else
               actual="$(shasum -a 256 "$tmp/polyglot.tar.gz" | awk '{print $1}')"
             fi
-            if [ "$actual" != "$expected" ]; then
-              echo "::error::Checksum mismatch for $url (expected $expected, got $actual)"
-              exit 1
-            fi
+            [ "$actual" = "$expected" ] || return 2
+          fi
+          return 0
+        }
+
+        fetch_pair ""
+        status=$?
+        if [ "$status" = "2" ]; then
+          echo "::warning::Checksum mismatch for $url (stale CDN cache?) — retrying with a cache-buster"
+          fetch_pair "?cb=$(date +%s)$RANDOM"
+          status=$?
+        fi
+
+        if [ "$status" = "0" ]; then
+          if [ "$actual" != "$expected" ] && [ -n "$expected" ]; then
+            echo "::error::Checksum mismatch for $url (expected $expected, got $actual)"
+            exit 1
           fi
           tar xzf "$tmp/polyglot.tar.gz" -C "$tmp"
           mkdir -p "$INSTALL_DIR"
