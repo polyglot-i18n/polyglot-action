@@ -8,12 +8,9 @@ name: i18n Check
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'src/**'
-      - '*.tsx'
-      - '*.jsx'
-      - '*.ts'
-      - '*.js'
+    # No `paths:` filter on purpose: translation gaps often arrive as
+    # catalog-only changes (messages/*.json), which a src-only filter would
+    # silently skip — the check must run on every PR to gate coverage.
 
 jobs:
   scan:
