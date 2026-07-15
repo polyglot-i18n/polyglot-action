@@ -7,9 +7,8 @@
 # CLI against a fixture and asserts every field the action's `jq` paths depend
 # on still exists.
 #
-# Opt-in: needs a `polyglot` binary. Set POLYGLOT_CLI_BIN to a built binary, or
-# have `polyglot` on PATH. Skips (exit 0) when neither is available so the rest
-# of the suite still runs without a CLI.
+# Requires a `polyglot` binary. Set POLYGLOT_CLI_BIN to a built binary or put
+# polyglot on PATH. CI installs a checksum-verified release before this test.
 set -euo pipefail
 
 POLYGLOT="${POLYGLOT_CLI_BIN:-}"
@@ -17,8 +16,8 @@ if [ -z "$POLYGLOT" ]; then
   if command -v polyglot >/dev/null 2>&1; then
     POLYGLOT="$(command -v polyglot)"
   else
-    echo "SKIP: no polyglot CLI (set POLYGLOT_CLI_BIN or put polyglot on PATH)"
-    exit 0
+    echo "FAIL: no polyglot CLI (set POLYGLOT_CLI_BIN or put polyglot on PATH)"
+    exit 1
   fi
 fi
 
@@ -56,7 +55,9 @@ echo
 
 # ── scan --format json ───────────────────────────────────────────────────────
 echo "polyglot scan --format json:"
-SCAN="$(cd "$WORK" && "$POLYGLOT" scan --format json 2>/dev/null || true)"
+set +e
+SCAN="$(cd "$WORK" && "$POLYGLOT" scan --format json 2>/dev/null)"
+set -e
 
 if echo "$SCAN" | jq -e '.summary' >/dev/null 2>&1; then
   pass ".summary object exists"
@@ -69,15 +70,21 @@ TOTAL="$(echo "$SCAN" | jq -r '.summary.total_strings')"
 FILES_SCANNED="$(echo "$SCAN" | jq -r '.summary.files_scanned')"
 FILES_WITH="$(echo "$SCAN" | jq -r '.summary.files_with_strings')"
 
-[ "$TOTAL" -ge 1 ] 2>/dev/null \
-  && pass ".summary.total_strings is a number ($TOTAL)" \
-  || fail ".summary.total_strings not a positive number (got: $TOTAL)"
-[ "$FILES_SCANNED" -ge 1 ] 2>/dev/null \
-  && pass ".summary.files_scanned is a number ($FILES_SCANNED)" \
-  || fail ".summary.files_scanned not a positive number (got: $FILES_SCANNED)"
-[ "$FILES_WITH" -ge 1 ] 2>/dev/null \
-  && pass ".summary.files_with_strings is a number ($FILES_WITH)" \
-  || fail ".summary.files_with_strings not a positive number (got: $FILES_WITH)"
+if [ "$TOTAL" -ge 1 ] 2>/dev/null; then
+  pass ".summary.total_strings is a number ($TOTAL)"
+else
+  fail ".summary.total_strings not a positive number (got: $TOTAL)"
+fi
+if [ "$FILES_SCANNED" -ge 1 ] 2>/dev/null; then
+  pass ".summary.files_scanned is a number ($FILES_SCANNED)"
+else
+  fail ".summary.files_scanned not a positive number (got: $FILES_SCANNED)"
+fi
+if [ "$FILES_WITH" -ge 1 ] 2>/dev/null; then
+  pass ".summary.files_with_strings is a number ($FILES_WITH)"
+else
+  fail ".summary.files_with_strings not a positive number (got: $FILES_WITH)"
+fi
 
 if echo "$SCAN" | jq -e '.strings | type == "array"' >/dev/null 2>&1; then
   pass ".strings is an array (per-file breakdown source)"
@@ -89,7 +96,9 @@ echo
 
 # ── coverage --format json ───────────────────────────────────────────────────
 echo "polyglot coverage --format json:"
-COV="$(cd "$WORK" && "$POLYGLOT" coverage --format json 2>/dev/null || true)"
+set +e
+COV="$(cd "$WORK" && "$POLYGLOT" coverage --format json 2>/dev/null)"
+set -e
 
 if echo "$COV" | jq -e 'has("average_coverage")' >/dev/null 2>&1; then
   AVG="$(echo "$COV" | jq -r '.average_coverage')"

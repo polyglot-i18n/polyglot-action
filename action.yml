@@ -65,107 +65,20 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Resolve Polyglot configuration
+      id: config
+      shell: bash
+      env:
+        CONFIG_PATH: ${{ inputs.config_path }}
+      run: ${{ github.action_path }}/scripts/resolve-config.sh "$CONFIG_PATH"
+
     - name: Install Polyglot CLI
       shell: bash
+      env:
+        REQUESTED_VERSION: ${{ inputs.version }}
       run: |
-        if command -v polyglot &> /dev/null; then
-          echo "Polyglot CLI already installed"
-          exit 0
-        fi
-
-        RELEASES_BASE_URL="https://releases.getpolyglot.ai"
-        BINARY_NAME="polyglot"
-        INSTALL_DIR="$HOME/.local/bin"
-
-        # Release dirs are tag-named ("v0.1.6"); the rolling alias is bare ("latest").
-        VERSION="${{ inputs.version }}"
-        if [ "$VERSION" != "latest" ]; then
-          VERSION="v${VERSION#v}"
-        fi
-
-        # Detect platform -> release target triple (matches install.sh + release.yml).
-        OS="$(uname -s)"; ARCH="$(uname -m)"
-        case "$OS" in
-          Linux)
-            case "$ARCH" in
-              x86_64) TARGET="x86_64-unknown-linux-gnu" ;;
-              *) echo "::error::Unsupported Linux architecture: $ARCH"; exit 1 ;;
-            esac ;;
-          Darwin)
-            case "$ARCH" in
-              arm64|aarch64) TARGET="aarch64-apple-darwin" ;;
-              x86_64) TARGET="x86_64-apple-darwin" ;;
-              *) echo "::error::Unsupported macOS architecture: $ARCH"; exit 1 ;;
-            esac ;;
-          *) echo "::error::Unsupported OS: $OS"; exit 1 ;;
-        esac
-
-        # Download the prebuilt binary straight from R2 — the reliable source.
-        # (Do NOT pipe getpolyglot.ai/install.sh: that path serves the marketing
-        # site, not the script.)
-        url="$RELEASES_BASE_URL/$VERSION/$BINARY_NAME-$VERSION-$TARGET.tar.gz"
-        tmp="$(mktemp -d)"
-        echo "Installing Polyglot CLI from $url"
-
-        # Download tarball + sidecar and verify. Right after a release the
-        # CDN edge can briefly serve a STALE `latest` tarball next to a fresh
-        # sidecar (verified live: v0.6.3 bytes under a v0.6.4 checksum) — so
-        # on mismatch, retry ONCE with a cache-busting query string, which
-        # bypasses the edge cache and reads the R2 origin.
-        fetch_pair() {
-          local bust="$1"
-          curl -fsSL "$url$bust" -o "$tmp/polyglot.tar.gz" || return 1
-          expected="$(curl -fsSL "$url.sha256$bust" 2>/dev/null | awk '{print $1}')"
-          if [ -n "$expected" ]; then
-            if command -v sha256sum &>/dev/null; then
-              actual="$(sha256sum "$tmp/polyglot.tar.gz" | awk '{print $1}')"
-            else
-              actual="$(shasum -a 256 "$tmp/polyglot.tar.gz" | awk '{print $1}')"
-            fi
-            [ "$actual" = "$expected" ] || return 2
-          fi
-          return 0
-        }
-
-        # `|| status=$?` keeps the -e shell alive on a nonzero return.
-        status=0
-        fetch_pair "" || status=$?
-        if [ "$status" = "2" ]; then
-          echo "::warning::Checksum mismatch for $url (stale CDN cache?) — retrying with a cache-buster"
-          status=0
-          fetch_pair "?cb=$(date +%s)$RANDOM" || status=$?
-        fi
-
-        if [ "$status" = "0" ]; then
-          if [ "$actual" != "$expected" ] && [ -n "$expected" ]; then
-            echo "::error::Checksum mismatch for $url (expected $expected, got $actual)"
-            exit 1
-          fi
-          tar xzf "$tmp/polyglot.tar.gz" -C "$tmp"
-          mkdir -p "$INSTALL_DIR"
-          mv "$tmp/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
-          chmod +x "$INSTALL_DIR/$BINARY_NAME"
-          echo "Installed $BINARY_NAME $VERSION ($TARGET)"
-        else
-          # R2 is the only public install path: the CLI repo is private and
-          # isn't on crates.io, so there's no source build for outside consumers.
-          # Build from source ONLY when run inside the monorepo (local checkout);
-          # otherwise fail clearly instead of attempting a doomed clone.
-          if [ -f "cli/Cargo.toml" ]; then
-            echo "::warning::Prebuilt binary unavailable at $url; building from the local checkout"
-            if ! command -v cargo &> /dev/null; then
-              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-              source "$HOME/.cargo/env"
-            fi
-            cargo install --path cli --root "$HOME/.local"
-          else
-            echo "::error::Could not download the Polyglot CLI from $url"
-            echo "::error::Check that version '${{ inputs.version }}' exists at https://releases.getpolyglot.ai and that the runner can reach it."
-            exit 1
-          fi
-        fi
-        rm -rf "$tmp"
-
+        INSTALL_DIR="$RUNNER_TEMP/polyglot-action/bin"
+        ${{ github.action_path }}/scripts/install-cli.sh "$REQUESTED_VERSION" "$INSTALL_DIR"
         echo "$INSTALL_DIR" >> "$GITHUB_PATH"
 
     - name: Run Polyglot scan
@@ -173,37 +86,8 @@ runs:
       shell: bash
       env:
         POLYGLOT_API_KEY: ${{ inputs.api-key }}
-      run: |
-        set +e
-        SCAN_OUTPUT=$(polyglot scan --format json 2>&1)
-        SCAN_EXIT=$?
-        set -e
-
-        # Save raw output
-        echo "$SCAN_OUTPUT" > /tmp/polyglot-scan.json
-
-        # Parse summary from JSON
-        if echo "$SCAN_OUTPUT" | jq -e '.summary' > /dev/null 2>&1; then
-          TOTAL=$(echo "$SCAN_OUTPUT" | jq -r '.summary.total_strings')
-          FILES_SCANNED=$(echo "$SCAN_OUTPUT" | jq -r '.summary.files_scanned')
-          FILES_WITH=$(echo "$SCAN_OUTPUT" | jq -r '.summary.files_with_strings')
-        else
-          TOTAL=0
-          FILES_SCANNED=0
-          FILES_WITH=0
-        fi
-
-        echo "total_strings=$TOTAL" >> "$GITHUB_OUTPUT"
-        echo "files_scanned=$FILES_SCANNED" >> "$GITHUB_OUTPUT"
-        echo "files_with_strings=$FILES_WITH" >> "$GITHUB_OUTPUT"
-
-        if [ "$TOTAL" -gt 0 ]; then
-          echo "has_untranslated=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "has_untranslated=false" >> "$GITHUB_OUTPUT"
-        fi
-
-        echo "scan_exit=$SCAN_EXIT" >> "$GITHUB_OUTPUT"
+        WORKING_DIRECTORY: ${{ steps.config.outputs.working_directory }}
+      run: ${{ github.action_path }}/scripts/run-scan.sh "$WORKING_DIRECTORY" /tmp/polyglot-scan.json
 
     - name: Generate PR comment
       if: inputs.comment == 'true' && github.event_name == 'pull_request'
@@ -256,34 +140,9 @@ runs:
       shell: bash
       env:
         POLYGLOT_API_KEY: ${{ inputs.api-key }}
-      run: |
-        THRESHOLD="${{ inputs.coverage-threshold }}"
-
-        # A threshold of 0 disables the coverage gate.
-        if [ -z "$THRESHOLD" ] || [ "$THRESHOLD" = "0" ]; then
-          echo "Coverage gate disabled (coverage-threshold=$THRESHOLD)"
-          exit 0
-        fi
-
-        set +e
-        COV_OUTPUT=$(polyglot coverage --format json 2>&1)
-        set -e
-
-        if echo "$COV_OUTPUT" | jq -e '.average_coverage' > /dev/null 2>&1; then
-          AVG=$(echo "$COV_OUTPUT" | jq -r '.average_coverage')
-        else
-          echo "::warning::Could not read coverage report; skipping coverage gate"
-          exit 0
-        fi
-
-        echo "average_coverage=$AVG" >> "$GITHUB_OUTPUT"
-        echo "Average coverage: ${AVG}% (threshold: ${THRESHOLD}%)"
-
-        # Compare with awk for float-safe comparison.
-        if awk "BEGIN { exit !($AVG < $THRESHOLD) }"; then
-          echo "::error::Translation coverage ${AVG}% is below the required threshold of ${THRESHOLD}%"
-          exit 1
-        fi
+        WORKING_DIRECTORY: ${{ steps.config.outputs.working_directory }}
+        COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
+      run: ${{ github.action_path }}/scripts/run-coverage.sh "$WORKING_DIRECTORY" "$COVERAGE_THRESHOLD"
 
     - name: Check result
       if: inputs.fail_on_untranslated == 'true'
@@ -306,10 +165,12 @@ runs:
       shell: bash
       env:
         POLYGLOT_API_KEY: ${{ inputs.api-key }}
+        WORKING_DIRECTORY: ${{ steps.config.outputs.working_directory }}
       run: |
         if [ -z "$POLYGLOT_API_KEY" ]; then
           echo "::warning::sync is enabled but no api-key was provided — skipping (polyglot push needs authentication)."
           exit 0
         fi
         echo "Syncing this repo's existing translations into your project's memory..."
+        cd "$WORKING_DIRECTORY"
         polyglot push

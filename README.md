@@ -31,7 +31,7 @@ jobs:
 
 ## What it does
 
-1. Installs the Polyglot CLI (`https://getpolyglot.ai/install.sh`).
+1. Installs the requested Polyglot CLI release and requires its SHA-256 sidecar to match.
 2. Runs `polyglot scan` on the checked-out tree and records the untranslated-string counts.
 3. On pull requests (when `comment: 'true'`), posts or updates a single PR comment with the untranslated-string counts and a per-file breakdown.
 4. Gates the check:
@@ -48,9 +48,9 @@ The action runs `polyglot scan` / `polyglot coverage` over the whole checked-out
 | `coverage-threshold` | no | `'100'` | Minimum average translation coverage percentage required to pass (`0` disables the coverage gate). |
 | `fail_on_untranslated` | no | `'true'` | Fail the check if untranslated strings are found. |
 | `comment` | no | `'true'` | Post a PR comment with the scan results. |
-| `config_path` | no | `''` | Path to `polyglot.toml` (default: auto-detect). |
+| `config_path` | no | `''` | Path to a `polyglot.toml` inside the checkout. Scan, coverage, and sync run from its directory; default is the checkout root. |
 | `github_token` | no | `${{ github.token }}` | GitHub token used to post PR comments. |
-| `version` | no | `'latest'` | Polyglot CLI version to install. |
+| `version` | no | `'latest'` | Polyglot CLI version to install. Explicit versions are verified against the installed binary; all downloads require a matching SHA-256 sidecar. |
 | `sync` | no | `'false'` | After scanning, run `polyglot push` to sync this repo's existing translations into your project's backend memory. Requires `api-key`. Runs **only** on a push to the default branch — never on `pull_request`. |
 
 ## Outputs
