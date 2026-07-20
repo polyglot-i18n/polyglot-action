@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANAGED="$ROOT/.github/workflows/managed.yml"
 CALLER="$ROOT/managed-example-workflow.yml"
+CI="$ROOT/.github/workflows/ci.yml"
 
 PASSED=0
 FAILED=0
@@ -14,6 +15,8 @@ echo "Test: every Polyglot workflow dependency is immutable"
 if grep -Eq 'uses: actions/checkout@[0-9a-f]{40}$' "$MANAGED" &&
   grep -Eq 'uses: polyglot-i18n/polyglot-action@[0-9a-f]{40}$' "$MANAGED" &&
   grep -q '^          version: 0.9.1$' "$MANAGED" &&
+  grep -q '^  POLYGLOT_CLI_VERSION: 0.9.1$' "$CI" &&
+  grep -Fq "install-cli.sh \"\$POLYGLOT_CLI_VERSION\"" "$CI" &&
   grep -Eq 'uses: polyglot-i18n/polyglot-action/\.github/workflows/managed\.yml@[0-9a-f]{40}$' "$CALLER" &&
   ! grep -Eq 'uses: .*@(main|master|v[0-9]+([.]|$))' "$MANAGED" "$CALLER"; then
   pass "checkout, root Action, and reusable workflow use full SHAs"
