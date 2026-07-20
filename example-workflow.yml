@@ -1,7 +1,7 @@
 # Example: .github/workflows/polyglot.yml
 #
-# Runs Polyglot i18n scanner on pull requests and posts a comment
-# with the translation coverage report.
+# Brownfield-safe differential checks for pull requests, merge queues, and the
+# default branch. Existing untranslated strings are allowed; new ones fail.
 
 name: i18n Check
 
@@ -10,18 +10,27 @@ on:
     branches: [main]
     # No `paths:` filter on purpose: translation gaps often arrive as
     # catalog-only changes (messages/*.json), which a src-only filter would
-    # silently skip — the check must run on every PR to gate coverage.
+    # silently skip — the check must run on every PR.
+  merge_group:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  scan:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Polyglot i18n Scan
+      - name: Polyglot i18n Check
         uses: polyglot-i18n/polyglot-action@v1
         with:
           api-key: ${{ secrets.POLYGLOT_API_KEY }}
-          coverage-threshold: '100'
-          fail_on_untranslated: 'true'
-          comment: 'true'
+          check-mode: differential
+          version: '0.9.0'
+          comment: 'false'

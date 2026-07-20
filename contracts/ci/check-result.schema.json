@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.getpolyglot.ai/ci/check-result-v1.json",
+  "title": "Polyglot differential check result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "engine_version", "result_hash", "base_sha", "head_sha",
+    "config_path", "config_hash", "head_config_hash", "configuration_changed",
+    "bootstrap", "policy_source", "policy_hash", "policy", "status", "conclusion",
+    "baseline", "head", "delta", "coverage", "validation", "policy_evaluation",
+    "findings", "errors", "timings_ms"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "engine_version": {"type": "string", "minLength": 1},
+    "result_hash": {"$ref": "#/$defs/hash"},
+    "base_sha": {"$ref": "#/$defs/sha"},
+    "head_sha": {"$ref": "#/$defs/sha"},
+    "config_path": {"$ref": "#/$defs/path"},
+    "config_hash": {"$ref": "#/$defs/hash"},
+    "head_config_hash": {"$ref": "#/$defs/hash"},
+    "configuration_changed": {"type": "boolean"},
+    "bootstrap": {"type": "boolean"},
+    "policy_source": {"enum": ["managed", "repository", "explicit"]},
+    "policy_hash": {"$ref": "#/$defs/hash"},
+    "policy": {"$ref": "https://schemas.getpolyglot.ai/ci/managed-policy-v1.json"},
+    "status": {"enum": ["complete", "incomplete"]},
+    "conclusion": {"enum": ["success", "failure", "neutral", "action_required"]},
+    "baseline": {"$ref": "#/$defs/revision_summary"},
+    "head": {"$ref": "#/$defs/revision_summary"},
+    "delta": {"$ref": "#/$defs/delta"},
+    "coverage": {"$ref": "#/$defs/coverage"},
+    "validation": {"$ref": "#/$defs/validation"},
+    "policy_evaluation": {"$ref": "#/$defs/policy_evaluation"},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "errors": {"type": "array", "items": {"$ref": "#/$defs/error"}},
+    "timings_ms": {"$ref": "#/$defs/timings"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "incomplete"}}, "required": ["status"]},
+      "then": {"properties": {"conclusion": {"const": "action_required"}}}
+    },
+    {
+      "if": {"properties": {"bootstrap": {"const": true}}, "required": ["bootstrap"]},
+      "then": {"properties": {"conclusion": {"enum": ["neutral", "action_required"]}}}
+    },
+    {
+      "if": {"properties": {"conclusion": {"const": "success"}}, "required": ["conclusion"]},
+      "then": {
+        "properties": {
+          "status": {"const": "complete"},
+          "policy_evaluation": {"type": "object", "properties": {"passed": {"const": true}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"conclusion": {"const": "failure"}}, "required": ["conclusion"]},
+      "then": {
+        "properties": {
+          "status": {"const": "complete"},
+          "policy_evaluation": {"type": "object", "properties": {"passed": {"const": false}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"conclusion": {"const": "action_required"}}, "required": ["conclusion"]},
+      "then": {"properties": {"status": {"const": "incomplete"}}}
+    }
+  ],
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "path": {"type": "string", "minLength": 1, "not": {"pattern": "(^/|(^|/)\\.\\.(/|$)|^[A-Za-z]:[\\\\/])"}},
+    "count": {"type": "integer", "minimum": 0},
+    "revision_summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["total_findings", "files_scanned", "files_with_findings", "scan_errors"],
+      "properties": {
+        "total_findings": {"$ref": "#/$defs/count"},
+        "files_scanned": {"$ref": "#/$defs/count"},
+        "files_with_findings": {"$ref": "#/$defs/count"},
+        "scan_errors": {"$ref": "#/$defs/count"}
+      }
+    },
+    "delta": {
+      "type": "object", "additionalProperties": false,
+      "required": ["new", "existing", "resolved"],
+      "properties": {
+        "new": {"$ref": "#/$defs/count"},
+        "existing": {"$ref": "#/$defs/count"},
+        "resolved": {"$ref": "#/$defs/count"}
+      }
+    },
+    "coverage_revision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["average", "languages"],
+      "properties": {
+        "average": {"type": "number", "minimum": 0, "maximum": 100},
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["language", "present", "translated", "total", "percentage"],
+            "properties": {
+              "language": {"type": "string"}, "present": {"type": "boolean"},
+              "translated": {"$ref": "#/$defs/count"}, "total": {"$ref": "#/$defs/count"},
+              "percentage": {"type": "number", "minimum": 0, "maximum": 100}
+            }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["baseline", "head", "average_delta", "languages"],
+      "properties": {
+        "baseline": {"$ref": "#/$defs/coverage_revision"},
+        "head": {"$ref": "#/$defs/coverage_revision"},
+        "average_delta": {"type": "number", "minimum": -100, "maximum": 100},
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["language", "baseline", "head", "delta"],
+            "properties": {
+              "language": {"type": "string"},
+              "baseline": {"type": "number", "minimum": 0, "maximum": 100},
+              "head": {"type": "number", "minimum": 0, "maximum": 100},
+              "delta": {"type": "number", "minimum": -100, "maximum": 100}
+            }
+          }
+        }
+      }
+    },
+    "validation_summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["errors", "warnings"],
+      "properties": {"errors": {"$ref": "#/$defs/count"}, "warnings": {"$ref": "#/$defs/count"}}
+    },
+    "validation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["baseline", "head", "error_delta", "warning_delta"],
+      "properties": {
+        "baseline": {"$ref": "#/$defs/validation_summary"},
+        "head": {"$ref": "#/$defs/validation_summary"},
+        "error_delta": {"type": "integer"}, "warning_delta": {"type": "integer"}
+      }
+    },
+    "rule": {
+      "type": "object", "additionalProperties": false,
+      "required": ["rule", "outcome", "expected", "actual", "message"],
+      "properties": {
+        "rule": {"type": "string"},
+        "outcome": {"enum": ["pass", "fail", "not_applicable"]},
+        "expected": {}, "actual": {}, "message": {"type": "string"}
+      }
+    },
+    "policy_evaluation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["passed", "rules"],
+      "properties": {"passed": {"type": "boolean"}, "rules": {"type": "array", "items": {"$ref": "#/$defs/rule"}}}
+    },
+    "location": {
+      "type": "object", "additionalProperties": false,
+      "required": ["start_line", "start_column", "end_line", "end_column"],
+      "properties": {
+        "start_line": {"type": "integer", "minimum": 1}, "start_column": {"type": "integer", "minimum": 1},
+        "end_line": {"type": "integer", "minimum": 1}, "end_column": {"type": "integer", "minimum": 1}
+      }
+    },
+    "remediation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "automatic", "command", "suggestion"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1}, "automatic": {"type": "boolean"},
+        "command": {"type": "string"}, "suggestion": {"type": "string", "minLength": 1}
+      }
+    },
+    "finding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "location", "finding_id", "comparison_fingerprint", "classification", "value", "syntax_kind", "sink_kind", "confidence", "annotation_level", "category", "remediation"],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"}, "location": {"$ref": "#/$defs/location"},
+        "finding_id": {"type": "string", "pattern": "^f-[0-9a-f]{64}$"},
+        "comparison_fingerprint": {"type": "string", "pattern": "^cf-v1-[0-9a-f]{64}$"},
+        "classification": {"enum": ["new", "existing", "resolved"]}, "value": {"type": "string"},
+        "syntax_kind": {"type": "string"}, "sink_kind": {"type": "string"}, "confidence": {"type": "string"},
+        "annotation_level": {"enum": ["failure", "warning", "notice"]}, "category": {"type": "string"},
+        "remediation": {"$ref": "#/$defs/remediation"}
+      }
+    },
+    "error": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "path", "message"],
+      "properties": {"code": {"type": "string"}, "path": {"oneOf": [{"$ref": "#/$defs/path"}, {"type": "null"}]}, "message": {"type": "string"}}
+    },
+    "timings": {
+      "type": "object", "additionalProperties": false,
+      "required": ["checkout", "base_scan", "head_scan", "comparison", "catalog_analysis", "remediation", "total"],
+      "properties": {
+        "checkout": {"$ref": "#/$defs/count"}, "base_scan": {"$ref": "#/$defs/count"},
+        "head_scan": {"$ref": "#/$defs/count"}, "comparison": {"$ref": "#/$defs/count"},
+        "catalog_analysis": {"$ref": "#/$defs/count"}, "remediation": {"$ref": "#/$defs/count"},
+        "total": {"$ref": "#/$defs/count"}
+      }
+    }
+  }
+}

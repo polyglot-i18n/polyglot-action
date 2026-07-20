@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.getpolyglot.ai/ci/managed-policy-v1.json",
+  "title": "Polyglot managed CI policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "preset"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "preset": {"enum": ["no-new", "coverage-may-not-decrease", "required-language-minimums", "strict", "informational"]},
+    "max_new_findings": {"type": ["integer", "null"], "minimum": 0},
+    "max_total_findings": {"type": ["integer", "null"], "minimum": 0},
+    "coverage_may_not_decrease": {"type": "boolean"},
+    "minimum_coverage": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "required_languages": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/language"}
+    },
+    "minimum_coverage_by_language": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/language"},
+      "additionalProperties": {"type": "number", "minimum": 0, "maximum": 100}
+    },
+    "validation_errors_must_be_zero": {"type": "boolean"},
+    "scan_must_be_complete": {"type": "boolean"},
+    "configuration_changes_require_approval": {"type": "boolean"},
+    "configuration_change_approved": {"type": "boolean"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"preset": {"const": "informational"}}, "required": ["preset"]},
+      "then": {
+        "properties": {
+          "max_new_findings": {"type": "null"},
+          "max_total_findings": {"type": "null"},
+          "coverage_may_not_decrease": {"const": false},
+          "minimum_coverage": {"type": "null"},
+          "required_languages": {"type": "array", "maxItems": 0},
+          "minimum_coverage_by_language": {"type": "object", "maxProperties": 0},
+          "validation_errors_must_be_zero": {"const": false},
+          "scan_must_be_complete": {"const": false},
+          "configuration_changes_require_approval": {"const": false}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"configuration_change_approved": {"const": true}},
+        "required": ["configuration_change_approved"]
+      },
+      "then": {
+        "properties": {"configuration_changes_require_approval": {"const": true}},
+        "required": ["configuration_changes_require_approval"]
+      }
+    },
+    {
+      "if": {
+        "properties": {"preset": {"not": {"const": "informational"}}},
+        "required": ["preset"]
+      },
+      "then": {
+        "properties": {"scan_must_be_complete": {"const": true}}
+      }
+    }
+  ],
+  "$defs": {
+    "language": {"type": "string", "pattern": "^[A-Za-z]{2,3}([_-][A-Za-z0-9]{2,8})*$"}
+  }
+}

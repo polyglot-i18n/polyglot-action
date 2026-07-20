@@ -11,6 +11,7 @@
 # polyglot on PATH. CI installs a checksum-verified release before this test.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLYGLOT="${POLYGLOT_CLI_BIN:-}"
 if [ -z "$POLYGLOT" ]; then
   if command -v polyglot >/dev/null 2>&1; then
@@ -20,6 +21,7 @@ if [ -z "$POLYGLOT" ]; then
     exit 1
   fi
 fi
+POLYGLOT="$(cd "$(dirname "$POLYGLOT")" && pwd -P)/$(basename "$POLYGLOT")"
 
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq is required"; exit 1; }
 
@@ -105,6 +107,42 @@ if echo "$COV" | jq -e 'has("average_coverage")' >/dev/null 2>&1; then
   pass ".average_coverage exists ($AVG) — the coverage gate reads it"
 else
   fail ".average_coverage missing — action's coverage gate reads .average_coverage (got: $(echo "$COV" | head -c 200))"
+fi
+
+echo
+
+# ── check --format json ──────────────────────────────────────────────────────
+echo "polyglot check --format json:"
+git -C "$WORK" init --quiet
+git -C "$WORK" config user.email ci@example.com
+git -C "$WORK" config user.name CI
+git -C "$WORK" add .
+git -C "$WORK" commit --quiet -m base
+BASE_SHA="$(git -C "$WORK" rev-parse HEAD)"
+cat > "$WORK/src/new.tsx" <<'EOF'
+export function NewLabel() { return <p>Checkout securely</p>; }
+EOF
+git -C "$WORK" add src/new.tsx
+git -C "$WORK" commit --quiet -m head
+HEAD_SHA="$(git -C "$WORK" rev-parse HEAD)"
+
+set +e
+CHECK_FILE="$WORK/check-result.json"
+(cd "$WORK" && "$POLYGLOT" check --base "$BASE_SHA" --head "$HEAD_SHA" --format json) > "$CHECK_FILE" 2>/dev/null
+CHECK_EXIT=$?
+set -e
+
+if [ "$CHECK_EXIT" -eq 1 ] && "$SCRIPT_DIR/../scripts/validate-check-result.py" \
+  "$SCRIPT_DIR/../contracts/ci" "$CHECK_FILE"; then
+  pass "check result satisfies the complete bundled v1 schema"
+else
+  fail "check command or schema contract failed (exit $CHECK_EXIT)"
+fi
+if [ "$(jq -r '.delta.new' "$CHECK_FILE")" -eq 1 ] &&
+  [ "$(jq -r '.conclusion' "$CHECK_FILE")" = "failure" ]; then
+  pass "check reports the new finding and no-new conclusion"
+else
+  fail "check differential fields are inconsistent"
 fi
 
 echo

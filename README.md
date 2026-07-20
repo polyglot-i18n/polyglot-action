@@ -1,8 +1,8 @@
-# Polyglot i18n Scanner — GitHub Action
+# Polyglot i18n Check — GitHub Action
 
-Detect untranslated strings in your codebase and post a translation report on pull requests.
+Compare immutable Git revisions and prevent pull requests from introducing new untranslated strings.
 
-This action installs the Polyglot CLI, runs `polyglot scan` on your repository, posts (and updates) a PR comment with the untranslated-string counts, and can gate the check on a coverage threshold.
+The recommended differential mode is brownfield-safe: existing localization debt is reported but allowed, while new untranslated strings fail. The original full-tree scan and coverage behavior remains available as `legacy` mode for every existing v1 workflow.
 
 ## Usage
 
@@ -13,38 +13,49 @@ name: i18n Check
 on:
   pull_request:
     branches: [main]
+  merge_group:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  scan:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Polyglot i18n Scan
+      - name: Polyglot i18n Check
         uses: polyglot-i18n/polyglot-action@v1
         with:
           api-key: ${{ secrets.POLYGLOT_API_KEY }}
-          coverage-threshold: '100'
-          fail_on_untranslated: 'true'
-          comment: 'true'
+          check-mode: differential
+          version: '0.9.0'
+          comment: 'false'
 ```
 
 ## What it does
 
-1. Installs the requested Polyglot CLI release and requires its SHA-256 sidecar to match.
-2. Runs `polyglot scan` on the checked-out tree and records the untranslated-string counts.
-3. On pull requests (when `comment: 'true'`), posts or updates a single PR comment with the untranslated-string counts and a per-file breakdown.
-4. Gates the check:
-   - Fails if average translation coverage is below `coverage-threshold` (set it to `0` to disable).
-   - Fails if untranslated strings are found and `fail_on_untranslated: 'true'`.
+1. Installs the requested checksum-verified Polyglot CLI release.
+2. Resolves explicit immutable base/head SHAs from `pull_request`, `merge_group`, `push`, or `workflow_dispatch`.
+3. Fails closed if either commit is unavailable; use `fetch-depth: 0` as shown above.
+4. Runs `polyglot check --format json` with the repository's `[ci]` policy. The default is `no-new`.
+5. Validates the complete v1 result schema and exit-code consistency.
+6. Emits GitHub annotations and, when an API key is configured, reports bounded run metadata even when comments are disabled.
 
-The action runs `polyglot scan` / `polyglot coverage` over the whole checked-out tree. It does **not** diff against the base branch.
+Run reports contain counts, immutable SHAs, hashes, conclusions, coverage/validation summaries, and timing metadata. They do not upload source values or finding excerpts.
 
 ## Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `api-key` | no | `''` | Polyglot API key, exported as `POLYGLOT_API_KEY`. If empty, the CLI runs in guest mode. |
+| `api-url` | no | `https://api.getpolyglot.ai` | HTTPS API origin for authenticated CI run reporting. |
+| `check-mode` | no | `legacy` | `differential` runs `polyglot check`; `legacy` preserves the original v1 full-tree behavior. |
 | `coverage-threshold` | no | `'100'` | Minimum average translation coverage percentage required to pass (`0` disables the coverage gate). |
 | `fail_on_untranslated` | no | `'true'` | Fail the check if untranslated strings are found. |
 | `comment` | no | `'true'` | Post a PR comment with the scan results. |
@@ -52,6 +63,22 @@ The action runs `polyglot scan` / `polyglot coverage` over the whole checked-out
 | `github_token` | no | `${{ github.token }}` | GitHub token used to post PR comments. |
 | `version` | no | `'latest'` | Polyglot CLI version to install. Explicit versions are verified against the installed binary; all downloads require a matching SHA-256 sidecar. |
 | `sync` | no | `'false'` | After scanning, run `polyglot push` to sync this repo's existing translations into your project's backend memory. Requires `api-key`. Runs **only** on a push to the default branch — never on `pull_request`. |
+
+## Legacy v1 behavior
+
+Existing workflows require no changes. Because `check-mode` defaults to `legacy`, the original inputs retain their exact behavior:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: polyglot-i18n/polyglot-action@v1
+  with:
+    api-key: ${{ secrets.POLYGLOT_API_KEY }}
+    coverage-threshold: '100'
+    fail_on_untranslated: 'true'
+    comment: 'true'
+```
+
+Legacy mode runs `polyglot scan` and `polyglot coverage` over the whole checked-out tree. Move to differential mode deliberately; legacy thresholds are not reinterpreted as differential policy fields.
 
 ## Outputs
 

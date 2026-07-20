@@ -45,10 +45,16 @@ declared_inputs() {
 # any `key:` line that follows a `with:` line until indentation returns.
 used_inputs() {
   awk '
+    /uses:[[:space:]]*polyglot-i18n\/polyglot-action/ {
+      action_step = 1
+      next
+    }
     /^[[:space:]]*with:[[:space:]]*$/ {
+      if (!action_step) next
       match($0, /^[[:space:]]*/)
       with_indent = RLENGTH
       in_with = 1
+      action_step = 0
       next
     }
     in_with {
@@ -92,7 +98,7 @@ done <<< "$USED"
 # ── Sanity: the inputs we explicitly support must exist ──────────────────────
 echo ""
 echo "Test: required inputs exist in action.yml"
-for required in api-key coverage-threshold fail_on_untranslated comment; do
+for required in api-key api-url check-mode coverage-threshold fail_on_untranslated comment; do
   if echo "$DECLARED" | grep -qxF "$required"; then
     pass "action declares '$required'"
   else

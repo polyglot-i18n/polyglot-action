@@ -37,6 +37,13 @@ jobs:
         run: |
           ./scripts/install-cli.sh latest "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          mkdir -p .test-bin
+          cp "$HOME/.local/bin/polyglot" .test-bin/polyglot
+
+      - name: Run differential Action tests
+        env:
+          POLYGLOT_CLI_BIN: ${{ github.workspace }}/.test-bin/polyglot
+        run: ./tests/test-differential.sh
 
       - name: Run CLI contract tests (real scan/coverage shape)
         run: ./tests/test-cli-contract.sh
