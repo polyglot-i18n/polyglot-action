@@ -14,7 +14,13 @@ START_SECONDS="$(date +%s)"
 trap 'rm -f "$STDOUT_FILE" "$STDERR_FILE"' EXIT
 
 ARGS=(check --base "$BASE_SHA" --head "$HEAD_SHA" --config-path polyglot.toml --format json)
-if [ "${POLYGLOT_INFORMATIONAL:-false}" = "true" ]; then
+if [ -n "${POLYGLOT_POLICY_FILE:-}" ]; then
+  if [ ! -f "$POLYGLOT_POLICY_FILE" ]; then
+    echo "::error::managed policy snapshot is unavailable" >&2
+    exit 2
+  fi
+  ARGS+=(--policy "$POLYGLOT_POLICY_FILE" --policy-source managed)
+elif [ "${POLYGLOT_INFORMATIONAL:-false}" = "true" ]; then
   ARGS+=(--policy informational --policy-source explicit)
 fi
 

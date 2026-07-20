@@ -17,7 +17,9 @@ jobs:
         run: shellcheck scripts/*.sh tests/*.sh
 
       - name: Actionlint
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+        run: >-
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          .github/workflows/*.yml managed-example-workflow.yml
 
       - name: Run format-comment tests
         run: ./tests/test-format-comment.sh
@@ -27,6 +29,12 @@ jobs:
 
       - name: Run fail-closed action tests
         run: ./tests/test-fail-closed.sh
+
+      - name: Run managed runner boundary tests
+        run: ./tests/test-managed.sh
+
+      - name: Run managed workflow trust tests
+        run: ./tests/test-managed-workflow.sh
 
       - name: Run installer integrity tests
         run: ./tests/test-installer.sh

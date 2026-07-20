@@ -98,7 +98,7 @@ done <<< "$USED"
 # ── Sanity: the inputs we explicitly support must exist ──────────────────────
 echo ""
 echo "Test: required inputs exist in action.yml"
-for required in api-key api-url check-mode coverage-threshold fail_on_untranslated comment; do
+for required in api-key api-url check-mode managed-token managed-run-id managed-policy-hash coverage-threshold fail_on_untranslated comment; do
   if echo "$DECLARED" | grep -qxF "$required"; then
     pass "action declares '$required'"
   else

@@ -1,0 +1,36 @@
+# Copy this file to .github/workflows/polyglot.yml in the connected repository.
+# Polyglot deliberately pins the reusable workflow to a complete commit SHA.
+name: Polyglot
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Polyglot operation
+        required: true
+        type: choice
+        default: check
+        options: [check]
+      run_id:
+        description: Polyglot dashboard run ID (leave empty for a standalone run)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: polyglot-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  polyglot:
+    uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@9ec1d7fd4aede9783e2bf5f7cfaf52911165a5d6
+    with:
+      operation: ${{ inputs.operation || 'check' }}
+      run_id: ${{ inputs.run_id || '' }}
