@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  POLYGLOT_CLI_VERSION: 0.9.1
+
 jobs:
   test:
     name: GitHub Action Tests
@@ -43,7 +46,8 @@ jobs:
       # fail CI rather than silently skipping the production boundary.
       - name: Install checksum-verified Polyglot CLI
         run: |
-          ./scripts/install-cli.sh latest "$HOME/.local/bin"
+          ./scripts/install-cli.sh "$POLYGLOT_CLI_VERSION" "$HOME/.local/bin"
+          test "$("$HOME/.local/bin/polyglot" --version)" = "polyglot $POLYGLOT_CLI_VERSION"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           mkdir -p .test-bin
           cp "$HOME/.local/bin/polyglot" .test-bin/polyglot

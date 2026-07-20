@@ -108,11 +108,11 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Run the managed Polyglot check
-        uses: polyglot-i18n/polyglot-action@77d0eb6f6380dc90b2de4580273cd911fcfdd9ca
+        uses: polyglot-i18n/polyglot-action@0142fb19d9f8bb45e9474dd871781e0cbb988274
         with:
           api-url: https://api.getpolyglot.ai
           check-mode: differential
-          version: 0.9.0
+          version: 0.9.1
           comment: "false"
           managed-token: ${{ steps.managed_auth.outputs.token }}
           managed-run-id: ${{ steps.managed_auth.outputs.run_id }}
