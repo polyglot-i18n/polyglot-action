@@ -44,6 +44,11 @@ RESULT_AVAILABLE="${POLYGLOT_RESULT_AVAILABLE:-false}"
 ERROR_CODE_VALUE="${POLYGLOT_ERROR_CODE:-}"
 ERROR_MESSAGE_VALUE="${POLYGLOT_ERROR_MESSAGE:-}"
 
+if [ "$RESULT_AVAILABLE" = "true" ]; then
+  ERROR_CODE_VALUE=""
+  ERROR_MESSAGE_VALUE=""
+fi
+
 if [ "$LIFECYCLE" = "cancelled" ]; then
   CONCLUSION_VALUE="cancelled"
   RESULT_AVAILABLE="false"
@@ -179,6 +184,12 @@ while [ "$ATTEMPT" -le 3 ]; do
     continue
   fi
 
-  echo "::error::Polyglot CI report upload failed (HTTP ${HTTP_CODE})" >&2
+  ERROR_DETAIL="$(jq -r 'if (.error? | type) == "string" then .error else empty end' "$RESPONSE" 2>/dev/null || true)"
+  ERROR_DETAIL="$(printf '%s' "$ERROR_DETAIL" | tr '\r\n' '  ' | cut -c1-500)"
+  if [ -n "$ERROR_DETAIL" ]; then
+    echo "::error::Polyglot CI report upload failed (HTTP ${HTTP_CODE}): ${ERROR_DETAIL}" >&2
+  else
+    echo "::error::Polyglot CI report upload failed (HTTP ${HTTP_CODE})" >&2
+  fi
   exit 1
 done

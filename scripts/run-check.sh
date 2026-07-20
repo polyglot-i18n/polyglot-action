@@ -38,6 +38,7 @@ STATUS="incomplete"
 CONCLUSION="action_required"
 ERROR_CODE=""
 ERROR_MESSAGE=""
+EXPECTED_POLICY_HASH="${POLYGLOT_POLICY_HASH:-}"
 
 if python3 "$ACTION_ROOT/scripts/validate-check-result.py" \
   "$ACTION_ROOT/contracts/ci" "$STDOUT_FILE"; then
@@ -51,6 +52,12 @@ if python3 "$ACTION_ROOT/scripts/validate-check-result.py" \
       ERROR_MESSAGE="polyglot check exit code and conclusion disagree"
       ;;
   esac
+
+  if [ -z "$ERROR_CODE" ] && [ -n "$EXPECTED_POLICY_HASH" ] &&
+    [ "$(jq -r '.policy_hash' "$STDOUT_FILE")" != "$EXPECTED_POLICY_HASH" ]; then
+    ERROR_CODE="managed_policy_hash_mismatch"
+    ERROR_MESSAGE="polyglot check policy hash does not match the managed run snapshot"
+  fi
 
   if [ -z "$ERROR_CODE" ]; then
     cp "$STDOUT_FILE" "$JSON_OUTPUT"

@@ -106,6 +106,48 @@ else
   fail "parse error did not require action"
 fi
 
+echo "Test: managed policy hash drift fails closed before report upload"
+POLYGLOT_POLICY_HASH="sha256:$(printf 'f%.0s' {1..64})"
+export POLYGLOT_POLICY_HASH
+run_check "$BASE" "$CLEAN" "$TMP/hash-mismatch.json" "$TMP/hash-mismatch.outputs"
+unset POLYGLOT_POLICY_HASH
+if grep -q '^result_available=false$' "$TMP/hash-mismatch.outputs" &&
+  grep -q '^exit_code=2$' "$TMP/hash-mismatch.outputs" &&
+  grep -q '^error_code=managed_policy_hash_mismatch$' "$TMP/hash-mismatch.outputs"; then
+  pass "managed policy hash mismatch is explicit and fail-closed"
+else
+  fail "managed policy hash mismatch was accepted"
+fi
+
+cat > "$TMP/managed-policy.json" <<'EOF'
+{
+  "schema_version": 1,
+  "preset": "informational",
+  "max_new_findings": null,
+  "max_total_findings": null,
+  "coverage_may_not_decrease": false,
+  "minimum_coverage": null,
+  "required_languages": [],
+  "minimum_coverage_by_language": {},
+  "validation_errors_must_be_zero": false,
+  "scan_must_be_complete": false,
+  "configuration_changes_require_approval": false,
+  "configuration_change_approved": false
+}
+EOF
+
+echo "Test: managed policy hash matches the backend canonical JSON contract"
+export POLYGLOT_POLICY_FILE="$TMP/managed-policy.json"
+export POLYGLOT_POLICY_HASH="sha256:f4d4246f0594ef495e4f8683c8a5c59dc7c887d93331a82e31b02dbf135c3992"
+run_check "$BASE" "$CLEAN" "$TMP/managed.json" "$TMP/managed.outputs"
+unset POLYGLOT_POLICY_FILE POLYGLOT_POLICY_HASH
+if grep -q '^result_available=true$' "$TMP/managed.outputs" &&
+  [ "$(jq -r '.policy_hash' "$TMP/managed.json")" = "sha256:f4d4246f0594ef495e4f8683c8a5c59dc7c887d93331a82e31b02dbf135c3992" ]; then
+  pass "managed CLI and backend policy hashes agree"
+else
+  fail "managed CLI and backend policy hashes drifted"
+fi
+
 write_event() {
   local path="$1"
   local json="$2"

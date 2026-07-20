@@ -160,6 +160,7 @@ runs:
         POLYGLOT_API_KEY: ${{ inputs.api-key }}
         POLYGLOT_INFORMATIONAL: ${{ steps.revisions.outputs.informational }}
         POLYGLOT_POLICY_FILE: ${{ inputs.managed-token != '' && '/tmp/polyglot-managed-policy.json' || '' }}
+        POLYGLOT_POLICY_HASH: ${{ inputs.managed-policy-hash }}
         WORKING_DIRECTORY: ${{ steps.config.outputs.working_directory }}
         BASE_SHA: ${{ steps.revisions.outputs.base_sha }}
         HEAD_SHA: ${{ steps.revisions.outputs.head_sha }}

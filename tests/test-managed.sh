@@ -101,8 +101,13 @@ case "$url" in
     ;;
   */report)
     cp "$payload" "$MANAGED_REPORT_PAYLOAD"
-    printf '{"accepted":true,"run_id":"%s","idempotent":false}' "$MANAGED_RUN_ID" > "$output"
-    printf '201'
+    if [ "${MANAGED_REPORT_HTTP_CODE:-201}" = "201" ]; then
+      printf '{"accepted":true,"run_id":"%s","idempotent":false}' "$MANAGED_RUN_ID" > "$output"
+      printf '201'
+    else
+      printf '{"error":"managed check result does not match its run snapshot"}' > "$output"
+      printf '%s' "$MANAGED_REPORT_HTTP_CODE"
+    fi
     ;;
   *)
     printf '{"error":"unexpected endpoint"}' > "$output"
@@ -149,12 +154,24 @@ export GITHUB_RUN_ATTEMPT=1
 "$ROOT/scripts/report-run.sh" "$TMP/result.json" > "$TMP/report-output"
 if [ "$(jq -r '.result.findings[0] | has("value")' "$MANAGED_REPORT_PAYLOAD")" = "false" ] &&
   [[ "$(jq -r '.result.findings[0].value_hash' "$MANAGED_REPORT_PAYLOAD")" =~ ^sha256:[0-9a-f]{64}$ ]] &&
+  [ "$(jq -r 'has("error")' "$MANAGED_REPORT_PAYLOAD")" = "false" ] &&
   ! grep -q 'Customer private source value' "$MANAGED_REPORT_PAYLOAD" &&
   ! grep -q "$RUN_TOKEN" "$TMP/report-output"; then
   pass "managed report preserves safe annotations without leaking credentials or source"
 else
   fail "managed report privacy contract failed"
 fi
+
+echo "Test: bounded backend validation errors remain actionable"
+export MANAGED_REPORT_HTTP_CODE=422
+if ! "$ROOT/scripts/report-run.sh" "$TMP/result.json" > "$TMP/rejected-output" 2>&1 &&
+  grep -q 'managed check result does not match its run snapshot' "$TMP/rejected-output" &&
+  ! grep -q "$RUN_TOKEN" "$TMP/rejected-output"; then
+  pass "managed report surfaces safe backend validation errors"
+else
+  fail "managed report hid or leaked its backend validation error"
+fi
+unset MANAGED_REPORT_HTTP_CODE
 
 echo
 echo "Results: $PASSED passed, $FAILED failed"
