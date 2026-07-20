@@ -199,7 +199,7 @@ runs:
       run: ${{ github.action_path }}/scripts/run-coverage.sh "$WORKING_DIRECTORY" "$COVERAGE_THRESHOLD"
 
     - name: Report differential run metadata
-      if: always() && inputs.check-mode == 'differential' && inputs.api-key != ''
+      if: always() && !cancelled() && inputs.check-mode == 'differential' && inputs.api-key != ''
       shell: bash
       env:
         POLYGLOT_API_KEY: ${{ inputs.api-key }}
@@ -209,13 +209,31 @@ runs:
         POLYGLOT_BRANCH: ${{ steps.revisions.outputs.branch }}
         POLYGLOT_REF: ${{ steps.revisions.outputs.ref }}
         POLYGLOT_PULL_REQUEST_NUMBER: ${{ steps.revisions.outputs.pull_request_number }}
-        POLYGLOT_LIFECYCLE_STATUS: ${{ cancelled() && 'cancelled' || 'completed' }}
+        POLYGLOT_LIFECYCLE_STATUS: completed
         POLYGLOT_RESULT_AVAILABLE: ${{ steps.check.outputs.result_available || 'false' }}
-        POLYGLOT_CONCLUSION: ${{ cancelled() && 'cancelled' || (steps.check.outputs.conclusion || 'action_required') }}
+        POLYGLOT_CONCLUSION: ${{ steps.check.outputs.conclusion || 'action_required' }}
         POLYGLOT_STARTED_AT: ${{ steps.check.outputs.started_at }}
         POLYGLOT_DURATION_MS: ${{ steps.check.outputs.duration_ms }}
         POLYGLOT_ERROR_CODE: ${{ steps.check.outputs.error_code || steps.revisions.outputs.error_code || 'action_not_completed' }}
         POLYGLOT_ERROR_MESSAGE: ${{ steps.check.outputs.error_message || steps.revisions.outputs.error_message || 'Polyglot check did not complete' }}
+      run: ${{ github.action_path }}/scripts/report-run.sh /tmp/polyglot-check.json
+
+    - name: Report cancelled differential run metadata
+      if: cancelled() && inputs.check-mode == 'differential' && inputs.api-key != ''
+      shell: bash
+      env:
+        POLYGLOT_API_KEY: ${{ inputs.api-key }}
+        POLYGLOT_API_URL: ${{ inputs.api-url }}
+        POLYGLOT_BASE_SHA: ${{ steps.revisions.outputs.base_sha }}
+        POLYGLOT_HEAD_SHA: ${{ steps.revisions.outputs.head_sha }}
+        POLYGLOT_BRANCH: ${{ steps.revisions.outputs.branch }}
+        POLYGLOT_REF: ${{ steps.revisions.outputs.ref }}
+        POLYGLOT_PULL_REQUEST_NUMBER: ${{ steps.revisions.outputs.pull_request_number }}
+        POLYGLOT_LIFECYCLE_STATUS: cancelled
+        POLYGLOT_RESULT_AVAILABLE: 'false'
+        POLYGLOT_CONCLUSION: cancelled
+        POLYGLOT_ERROR_CODE: cancelled
+        POLYGLOT_ERROR_MESSAGE: Polyglot check was cancelled
       run: ${{ github.action_path }}/scripts/report-run.sh /tmp/polyglot-check.json
 
     - name: Normalize Action outputs
