@@ -59,6 +59,7 @@ else
     workflow_dispatch)
       HEAD_SHA="$(json_value '.after')"
       [ -n "$HEAD_SHA" ] || HEAD_SHA="$GITHUB_SHA_VALUE"
+      [ -n "$HEAD_SHA" ] || HEAD_SHA="$(git -C "$WORKSPACE" rev-parse HEAD 2>/dev/null || true)"
       BASE_SHA="$(json_value '.inputs.base_sha')"
       BRANCH="${GITHUB_REF_NAME:-}"
       if [ -z "$BASE_SHA" ] && valid_sha "$HEAD_SHA"; then

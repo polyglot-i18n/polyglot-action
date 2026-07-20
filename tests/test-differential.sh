@@ -160,6 +160,23 @@ else
   fail "workflow dispatch failed"
 fi
 
+export GITHUB_EVENT_NAME=workflow_dispatch
+export GITHUB_EVENT_PATH="$TMP/events/dispatch.json"
+export GITHUB_SHA=""
+export GITHUB_REF="refs/heads/main"
+export GITHUB_REF_NAME=main
+export GITHUB_WORKSPACE="$TMP/repo"
+export GITHUB_OUTPUT="$TMP/dispatch-checkout.outputs"
+: > "$GITHUB_OUTPUT"
+"$ROOT/scripts/resolve-revisions.sh" "$TMP/repo"
+if grep -q '^resolution_ok=true$' "$GITHUB_OUTPUT" &&
+  grep -q "^base_sha=$NEW$" "$GITHUB_OUTPUT" &&
+  grep -q "^head_sha=$BROKEN$" "$GITHUB_OUTPUT"; then
+  pass "workflow dispatch falls back to the immutable checked-out head"
+else
+  fail "workflow dispatch checkout fallback failed"
+fi
+
 write_event "$TMP/events/missing.json" "{\"before\":\"$(printf 'f%.0s' {1..40})\",\"after\":\"$NEW\",\"ref\":\"refs/heads/main\"}"
 resolve_event push "$TMP/events/missing.json" "$TMP/missing.outputs"
 if grep -q '^resolution_ok=false$' "$TMP/missing.outputs" && grep -q '^error_code=missing_base_revision$' "$TMP/missing.outputs"; then
