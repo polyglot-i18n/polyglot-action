@@ -31,6 +31,9 @@ jobs:
       - name: Run managed runner boundary tests
         run: ./tests/test-managed.sh
 
+      - name: Run managed workflow trust tests
+        run: ./tests/test-managed-workflow.sh
+
       - name: Run installer integrity tests
         run: ./tests/test-installer.sh
 
