@@ -123,10 +123,11 @@ def validate(instance, schema, registry, root=None, path="$", combinators=True):
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: validate-check-result.py SCHEMA_DIR RESULT", file=sys.stderr)
+    if len(sys.argv) not in (3, 4):
+        print("usage: validate-check-result.py SCHEMA_DIR RESULT [SCHEMA_FILE]", file=sys.stderr)
         return 2
     schema_dir = Path(sys.argv[1])
+    schema_file = sys.argv[3] if len(sys.argv) == 4 else "check-result.schema.json"
     registry = {}
     for path in schema_dir.glob("*.schema.json"):
         schema = json.loads(path.read_text())
@@ -134,7 +135,7 @@ def main() -> int:
         registry[schema["$id"]] = schema
     try:
         instance = json.loads(Path(sys.argv[2]).read_text())
-        validate(instance, registry["check-result.schema.json"], registry)
+        validate(instance, registry[schema_file], registry)
     except (OSError, json.JSONDecodeError, KeyError, ContractError) as error:
         print(f"invalid Polyglot check result: {error}", file=sys.stderr)
         return 1

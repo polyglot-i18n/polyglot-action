@@ -28,6 +28,9 @@ jobs:
       - name: Run fail-closed action tests
         run: ./tests/test-fail-closed.sh
 
+      - name: Run managed runner boundary tests
+        run: ./tests/test-managed.sh
+
       - name: Run installer integrity tests
         run: ./tests/test-installer.sh
 
