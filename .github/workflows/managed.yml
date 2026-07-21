@@ -112,7 +112,7 @@ jobs:
         with:
           api-url: https://api.getpolyglot.ai
           check-mode: differential
-          version: 0.9.1
+          version: 0.9.2
           comment: "false"
           managed-token: ${{ steps.managed_auth.outputs.token }}
           managed-run-id: ${{ steps.managed_auth.outputs.run_id }}
