@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  POLYGLOT_CLI_VERSION: 0.9.2
+  POLYGLOT_CLI_VERSION: 0.10.0
 
 jobs:
   test:
