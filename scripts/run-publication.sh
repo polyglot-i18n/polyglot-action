@@ -27,5 +27,22 @@ if [ "$MATERIALIZER_EXIT" -ne 0 ]; then
   exit "$MATERIALIZER_EXIT"
 fi
 
-python3 "$ACTION_ROOT/scripts/package-publication.py" \
-  "$WORKSPACE" "$MANIFEST" "$REPORT" "$PAYLOAD"
+if ! python3 "$ACTION_ROOT/scripts/package-publication.py" \
+    "$WORKSPACE" "$MANIFEST" "$REPORT" "$PAYLOAD"; then
+  fallback_report="$(mktemp)"
+  trap 'rm -f "$fallback_report"' EXIT
+  jq '
+    .status = "incomplete"
+    | .changed_files = []
+    | .errors = [{
+        code: "artifact_packaging_failed",
+        path: null,
+        message: "the final repository diff did not match the signed catalog allowlist"
+      }]
+  ' "$REPORT" > "$fallback_report"
+  mv "$fallback_report" "$REPORT"
+  jq -n --slurpfile report "$REPORT" \
+    '{schema_version: 1, report: $report[0], files: []}' > "$PAYLOAD"
+  echo "::error::Polyglot publication artifacts failed final allowlist verification" >&2
+  exit 1
+fi

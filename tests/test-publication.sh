@@ -105,6 +105,35 @@ else
 fi
 rm -f "$TMP/repo/source.ts"
 
+cat > "$TMP/bin/polyglot" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+report=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --report) report="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+cp "$PUBLICATION_REPORT_SOURCE" "$report"
+EOF
+chmod +x "$TMP/bin/polyglot"
+
+echo "Test: a final diff mismatch still produces a source-free incomplete report"
+printf 'changed\n' > "$TMP/repo/source.ts"
+if ! PATH="$TMP/bin:$PATH" PUBLICATION_REPORT_SOURCE="$TMP/report.json" \
+    "$ROOT/scripts/run-publication.sh" "$TMP/repo" "$TMP/manifest.json" \
+    "$TMP/run-report.json" "$TMP/rejected-payload.json" >/dev/null 2>&1 &&
+  [ "$(jq -r '.report.status' "$TMP/rejected-payload.json")" = "incomplete" ] &&
+  [ "$(jq '.files | length' "$TMP/rejected-payload.json")" -eq 0 ] &&
+  ! jq -e '.. | strings | select(. == "Neu" or . == "Alt" or . == "changed")' \
+    "$TMP/rejected-payload.json" >/dev/null; then
+  pass "unexpected diffs remain reportable without source content"
+else
+  fail "unexpected diff did not produce a safe failure report"
+fi
+rm -f "$TMP/repo/source.ts"
+
 cat > "$TMP/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
