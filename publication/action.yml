@@ -1,0 +1,66 @@
+name: Polyglot catalog publication gate
+description: Materialize an immutable approved catalog manifest and report differential verification
+
+inputs:
+  api-url:
+    description: Polyglot API origin
+    required: true
+  run-token:
+    description: Short-lived publication-scoped credential
+    required: true
+  run-id:
+    description: Backend-created publication run UUID
+    required: true
+  manifest-hash:
+    description: Immutable publication manifest digest
+    required: true
+  version:
+    description: Exact Polyglot CLI release required by the publication manifest
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install publication CLI
+      shell: bash
+      env:
+        REQUESTED_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        install_dir="$RUNNER_TEMP/polyglot-publication/bin"
+        "$GITHUB_ACTION_PATH/../scripts/install-cli.sh" "$REQUESTED_VERSION" "$install_dir"
+        echo "$install_dir" >> "$GITHUB_PATH"
+
+    - name: Fetch immutable publication manifest
+      shell: bash
+      env:
+        POLYGLOT_API_URL: ${{ inputs.api-url }}
+        POLYGLOT_RUN_TOKEN: ${{ inputs.run-token }}
+        POLYGLOT_RUN_ID: ${{ inputs.run-id }}
+        POLYGLOT_MANIFEST_HASH: ${{ inputs.manifest-hash }}
+      run: "$GITHUB_ACTION_PATH/../scripts/fetch-publish-manifest.sh /tmp/polyglot-publish-manifest.json"
+
+    - name: Materialize and verify approved catalogs
+      id: publication
+      shell: bash
+      run: >-
+        "$GITHUB_ACTION_PATH/../scripts/run-publication.sh"
+        "$GITHUB_WORKSPACE"
+        /tmp/polyglot-publish-manifest.json
+        /tmp/polyglot-publish-report.json
+        /tmp/polyglot-publish-payload.json
+
+    - name: Report publication result and catalog artifacts
+      if: always()
+      shell: bash
+      env:
+        POLYGLOT_API_URL: ${{ inputs.api-url }}
+        POLYGLOT_RUN_TOKEN: ${{ inputs.run-token }}
+        POLYGLOT_RUN_ID: ${{ inputs.run-id }}
+      run: |
+        set -euo pipefail
+        if [ ! -f /tmp/polyglot-publish-payload.json ]; then
+          echo "::error::Publication ended before a report payload was available"
+          exit 1
+        fi
+        "$GITHUB_ACTION_PATH/../scripts/report-publication.sh" /tmp/polyglot-publish-payload.json

@@ -14,14 +14,26 @@ fail() { FAILED=$((FAILED + 1)); echo "  FAIL: $1"; }
 echo "Test: every Polyglot workflow dependency is immutable"
 if grep -Eq 'uses: actions/checkout@[0-9a-f]{40}$' "$MANAGED" &&
   grep -Eq 'uses: polyglot-i18n/polyglot-action@[0-9a-f]{40}$' "$MANAGED" &&
-  grep -q '^          version: 0.9.1$' "$MANAGED" &&
-  grep -q '^  POLYGLOT_CLI_VERSION: 0.9.1$' "$CI" &&
+  grep -Eq 'uses: polyglot-i18n/polyglot-action/publication@[0-9a-f]{40}$' "$MANAGED" &&
+  [ "$(grep -c '^          version: 0.12.0$' "$MANAGED")" -eq 2 ] &&
+  grep -q '^  POLYGLOT_CLI_VERSION: 0.12.0$' "$CI" &&
   grep -Fq "install-cli.sh \"\$POLYGLOT_CLI_VERSION\"" "$CI" &&
   grep -Eq 'uses: polyglot-i18n/polyglot-action/\.github/workflows/managed\.yml@[0-9a-f]{40}$' "$CALLER" &&
   ! grep -Eq 'uses: .*@(main|master|v[0-9]+([.]|$))' "$MANAGED" "$CALLER"; then
-  pass "checkout, root Action, and reusable workflow use full SHAs"
+  pass "checkout, check, publication, and reusable workflow dependencies use full SHAs"
 else
   fail "a managed dependency is mutable"
+fi
+
+echo "Test: publication is dashboard-requested and cannot become a Git writer"
+if grep -Fq 'Managed publication requires workflow_dispatch and a backend-created run ID' "$MANAGED" &&
+  grep -Fq 'fetch_publish_manifest' "$MANAGED" &&
+  grep -Fq 'report_publish' "$MANAGED" &&
+  grep -Fq "manifest-hash: \${{ steps.managed_auth.outputs.manifest_hash }}" "$MANAGED" &&
+  ! grep -Eq 'git (add|commit|push)|pull-requests: write|contents: write' "$MANAGED"; then
+  pass "publication remains an immutable verification gate without repository writes"
+else
+  fail "publication escaped its Phase 6 trust boundary"
 fi
 
 echo "Test: caller and reusable workflow have least-privilege permissions"

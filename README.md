@@ -34,7 +34,7 @@ jobs:
         with:
           api-key: ${{ secrets.POLYGLOT_API_KEY }}
           check-mode: differential
-          version: '0.9.1'
+          version: '0.10.0'
           comment: 'false'
 ```
 
