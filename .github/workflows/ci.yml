@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  POLYGLOT_CLI_VERSION: 0.10.0
+  POLYGLOT_CLI_VERSION: 0.11.0
 
 jobs:
   test:
@@ -38,6 +38,9 @@ jobs:
 
       - name: Run managed workflow trust tests
         run: ./tests/test-managed-workflow.sh
+
+      - name: Run publication boundary tests
+        run: ./tests/test-publication.sh
 
       - name: Run installer integrity tests
         run: ./tests/test-installer.sh

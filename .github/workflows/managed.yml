@@ -28,12 +28,22 @@ jobs:
         shell: bash
         env:
           POLYGLOT_OPERATION: ${{ inputs.operation }}
+          POLYGLOT_REQUESTED_RUN_ID: ${{ inputs.run_id }}
         run: |
           set -euo pipefail
-          if [ "$POLYGLOT_OPERATION" != "check" ]; then
-            echo "::error::This managed workflow release supports only the check operation"
-            exit 1
-          fi
+          case "$POLYGLOT_OPERATION" in
+            check) ;;
+            publish)
+              if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ -z "$POLYGLOT_REQUESTED_RUN_ID" ]; then
+                echo "::error::Managed publication requires workflow_dispatch and a backend-created run ID"
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Managed operation must be check or publish"
+              exit 1
+              ;;
+          esac
 
       - name: Check out the exact event revision
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -45,6 +55,7 @@ jobs:
         id: managed_auth
         shell: bash
         env:
+          POLYGLOT_OPERATION: ${{ inputs.operation }}
           POLYGLOT_REQUESTED_RUN_ID: ${{ inputs.run_id }}
           POLYGLOT_API_URL: https://api.getpolyglot.ai
           POLYGLOT_OIDC_AUDIENCE: https://api.getpolyglot.ai
@@ -75,8 +86,9 @@ jobs:
           oidc_token="$(jq -er '.value | select(type == "string" and length > 0)' "$oidc_response")"
           jq -n \
             --arg token "$oidc_token" \
+            --arg operation "$POLYGLOT_OPERATION" \
             --arg run_id "$POLYGLOT_REQUESTED_RUN_ID" \
-            '{schema_version: 1, token: $token, operation: "check", run_id: $run_id}' \
+            '{schema_version: 1, token: $token, operation: $operation, run_id: $run_id}' \
             > "$exchange_payload"
 
           exchange_status="$(curl --proto '=https' --tlsv1.2 -sS \
@@ -84,17 +96,29 @@ jobs:
             -X POST "$POLYGLOT_API_URL/api/v1/ci/auth/github" \
             -H 'Content-Type: application/json' \
             --data-binary "@$exchange_payload")"
+
+          if [ "$POLYGLOT_OPERATION" = "check" ]; then
+            valid_response='.
+              | .schema_version == 1 and .token_type == "Bearer" and
+                (.token | type == "string" and startswith("pgr_")) and
+                (.run_id | type == "string" and length > 0) and
+                (.policy_hash | type == "string" and test("^sha256:[0-9a-f]{64}$")) and
+                (.operations | index("start")) != null and
+                (.operations | index("fetch_policy")) != null and
+                (.operations | index("report_check")) != null'
+          else
+            valid_response='.
+              | .schema_version == 1 and .token_type == "Bearer" and
+                (.token | type == "string" and startswith("pgr_")) and
+                .run_id == $run_id and
+                (.manifest_hash | type == "string" and test("^sha256:[0-9a-f]{64}$")) and
+                (.operations | index("fetch_publish_manifest")) != null and
+                (.operations | index("report_publish")) != null'
+          fi
+
           if [ "$exchange_status" != "200" ] ||
-            ! jq -e '
-              .schema_version == 1 and
-              .token_type == "Bearer" and
-              (.token | type == "string" and startswith("pgr_")) and
-              (.run_id | type == "string" and length > 0) and
-              (.policy_hash | type == "string" and test("^sha256:[0-9a-f]{64}$")) and
-              (.operations | index("start")) != null and
-              (.operations | index("fetch_policy")) != null and
-              (.operations | index("report_check")) != null
-            ' "$exchange_response" >/dev/null; then
+            ! jq -e --arg run_id "$POLYGLOT_REQUESTED_RUN_ID" "$valid_response" \
+              "$exchange_response" >/dev/null; then
             echo "::error::Polyglot managed authentication failed (HTTP $exchange_status)"
             exit 1
           fi
@@ -104,16 +128,28 @@ jobs:
           {
             echo "token=$run_token"
             echo "run_id=$(jq -r '.run_id' "$exchange_response")"
-            echo "policy_hash=$(jq -r '.policy_hash' "$exchange_response")"
+            echo "policy_hash=$(jq -r '.policy_hash // empty' "$exchange_response")"
+            echo "manifest_hash=$(jq -r '.manifest_hash // empty' "$exchange_response")"
           } >> "$GITHUB_OUTPUT"
 
       - name: Run the managed Polyglot check
+        if: inputs.operation == 'check'
         uses: polyglot-i18n/polyglot-action@0142fb19d9f8bb45e9474dd871781e0cbb988274
         with:
           api-url: https://api.getpolyglot.ai
           check-mode: differential
-          version: 0.10.0
+          version: 0.11.0
           comment: "false"
           managed-token: ${{ steps.managed_auth.outputs.token }}
           managed-run-id: ${{ steps.managed_auth.outputs.run_id }}
           managed-policy-hash: ${{ steps.managed_auth.outputs.policy_hash }}
+
+      - name: Materialize and verify approved catalogs
+        if: inputs.operation == 'publish'
+        uses: polyglot-i18n/polyglot-action/publication@afe9c8cd231c5bc0da46e3d8084c97d9922b4355
+        with:
+          api-url: https://api.getpolyglot.ai
+          run-token: ${{ steps.managed_auth.outputs.token }}
+          run-id: ${{ steps.managed_auth.outputs.run_id }}
+          manifest-hash: ${{ steps.managed_auth.outputs.manifest_hash }}
+          version: 0.11.0
