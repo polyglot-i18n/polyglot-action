@@ -107,6 +107,8 @@ jobs:
                 (.operations | index("fetch_policy")) != null and
                 (.operations | index("report_check")) != null'
           else
+            # $run_id is a jq variable supplied below, not a shell expansion.
+            # shellcheck disable=SC2016
             valid_response='.
               | .schema_version == 1 and .token_type == "Bearer" and
                 (.token | type == "string" and startswith("pgr_")) and
