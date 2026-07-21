@@ -14,7 +14,7 @@ on:
         required: true
         type: choice
         default: check
-        options: [check]
+        options: [check, publish]
       run_id:
         description: Polyglot dashboard run ID (leave empty for a standalone run)
         required: false
@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   polyglot:
-    uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@b9fced599968a6e88d07951382d8a5d4efa2a893
+    uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@fdcfa3fa2c1819797c7d4da16581e45ac3037868
     with:
       operation: ${{ inputs.operation || 'check' }}
       run_id: ${{ inputs.run_id || '' }}
