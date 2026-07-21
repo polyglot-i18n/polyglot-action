@@ -44,7 +44,7 @@ jq -n \
   {
     schema_version: 1, run_id: $run_id, project_id: "project-01", repository_id: 42,
     base_sha: $base, config_path: "polyglot.toml", config_hash: $config,
-    catalog_snapshot_hash: $snapshot, cli_version: "0.11.0",
+    catalog_snapshot_hash: $snapshot, cli_version: "0.12.0",
     allowed_paths: ["messages/de.json"],
     documents: [{
       path: "messages/de.json", format: "json", language: "de", before_hash: $before,
