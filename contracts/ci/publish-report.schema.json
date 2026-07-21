@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.getpolyglot.ai/ci/publish-report-v1.json",
+  "title": "Polyglot catalog publication report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "manifest_hash", "status", "dry_run", "baseline", "post_change", "changed_files", "warnings", "errors"],
+  "properties": {
+    "schema_version": {"const": 1}, "run_id": {"type": "string", "minLength": 1},
+    "manifest_hash": {"$ref": "#/$defs/hash"},
+    "status": {"enum": ["verified", "baseline_failed", "polyglot_regression", "incomplete"]},
+    "dry_run": {"type": "boolean"},
+    "baseline": {"oneOf": [{"$ref": "#/$defs/verification"}, {"type": "null"}]},
+    "post_change": {"oneOf": [{"$ref": "#/$defs/verification"}, {"type": "null"}]},
+    "changed_files": {"type": "array", "items": {"$ref": "#/$defs/changed_file"}},
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/message"}},
+    "errors": {"type": "array", "items": {"$ref": "#/$defs/message"}}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "verified"}}, "required": ["status"]},
+      "then": {
+        "properties": {
+          "baseline": {
+            "type": "object",
+            "properties": {"exit_code": {"const": 0}, "timed_out": {"const": false}}
+          },
+          "post_change": {
+            "type": "object",
+            "properties": {"exit_code": {"const": 0}, "timed_out": {"const": false}}
+          },
+          "errors": {"type": "array", "maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"status": {"const": "baseline_failed"}},
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "baseline": {
+            "anyOf": [
+              {"type": "object", "properties": {"exit_code": {"not": {"const": 0}}}},
+              {"type": "object", "properties": {"timed_out": {"const": true}}}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"status": {"const": "polyglot_regression"}},
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "baseline": {
+            "type": "object",
+            "properties": {"exit_code": {"const": 0}, "timed_out": {"const": false}}
+          },
+          "post_change": {
+            "anyOf": [
+              {"type": "object", "properties": {"exit_code": {"not": {"const": 0}}}},
+              {"type": "object", "properties": {"timed_out": {"const": true}}}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "incomplete"}}, "required": ["status"]},
+      "then": {"properties": {"errors": {"type": "array", "minItems": 1}}}
+    }
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "path": {"type": "string", "minLength": 1, "not": {"pattern": "(^/|(^|/)\\.\\.(/|$)|^[A-Za-z]:[\\\\/])"}},
+    "verification": {
+      "type": "object", "additionalProperties": false,
+      "required": ["exit_code", "duration_ms", "timed_out", "log_digest"],
+      "properties": {"exit_code": {"type": "integer"}, "duration_ms": {"type": "integer", "minimum": 0}, "timed_out": {"type": "boolean"}, "log_digest": {"$ref": "#/$defs/hash"}}
+    },
+    "changed_file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "before_hash", "after_hash", "changed_keys"],
+      "properties": {"path": {"$ref": "#/$defs/path"}, "before_hash": {"$ref": "#/$defs/hash"}, "after_hash": {"$ref": "#/$defs/hash"}, "changed_keys": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}}
+    },
+    "message": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "path", "message"],
+      "properties": {"code": {"type": "string", "minLength": 1}, "path": {"oneOf": [{"$ref": "#/$defs/path"}, {"type": "null"}]}, "message": {"type": "string"}}
+    }
+  }
+}
