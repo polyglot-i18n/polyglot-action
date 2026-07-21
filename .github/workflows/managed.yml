@@ -148,7 +148,7 @@ jobs:
 
       - name: Materialize and verify approved catalogs
         if: inputs.operation == 'publish'
-        uses: polyglot-i18n/polyglot-action/publication@afe9c8cd231c5bc0da46e3d8084c97d9922b4355
+        uses: polyglot-i18n/polyglot-action/publication@c5dda8ce925c702a4850cd113b8d2016b81ff782
         with:
           api-url: https://api.getpolyglot.ai
           run-token: ${{ steps.managed_auth.outputs.token }}
