@@ -33,14 +33,14 @@ jobs:
           set -euo pipefail
           case "$POLYGLOT_OPERATION" in
             check) ;;
-            publish)
+            catalog_sync|publish)
               if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ -z "$POLYGLOT_REQUESTED_RUN_ID" ]; then
-                echo "::error::Managed publication requires workflow_dispatch and a backend-created run ID"
+                echo "::error::Managed $POLYGLOT_OPERATION requires workflow_dispatch and a backend-created run ID"
                 exit 1
               fi
               ;;
             *)
-              echo "::error::Managed operation must be check or publish"
+              echo "::error::Managed operation must be check, catalog_sync, or publish"
               exit 1
               ;;
           esac
@@ -106,6 +106,14 @@ jobs:
                 (.operations | index("start")) != null and
                 (.operations | index("fetch_policy")) != null and
                 (.operations | index("report_check")) != null'
+          elif [ "$POLYGLOT_OPERATION" = "catalog_sync" ]; then
+            # $run_id is a jq variable supplied below, not a shell expansion.
+            # shellcheck disable=SC2016
+            valid_response='.
+              | .schema_version == 1 and .token_type == "Bearer" and
+                (.token | type == "string" and startswith("pgr_")) and
+                .run_id == $run_id and
+                (.operations | index("sync_catalog")) != null'
           else
             # $run_id is a jq variable supplied below, not a shell expansion.
             # shellcheck disable=SC2016
@@ -145,6 +153,15 @@ jobs:
           managed-token: ${{ steps.managed_auth.outputs.token }}
           managed-run-id: ${{ steps.managed_auth.outputs.run_id }}
           managed-policy-hash: ${{ steps.managed_auth.outputs.policy_hash }}
+
+      - name: Sync the managed catalog inventory
+        if: inputs.operation == 'catalog_sync'
+        uses: polyglot-i18n/polyglot-action/catalog-sync@692d8a61bc3f801591b2bd3aab582c7f17f6d775
+        with:
+          api-url: https://api.getpolyglot.ai
+          run-token: ${{ steps.managed_auth.outputs.token }}
+          run-id: ${{ steps.managed_auth.outputs.run_id }}
+          version: 0.12.3
 
       - name: Materialize and verify approved catalogs
         if: inputs.operation == 'publish'
