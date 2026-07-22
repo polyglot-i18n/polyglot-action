@@ -140,7 +140,7 @@ jobs:
         with:
           api-url: https://api.getpolyglot.ai
           check-mode: differential
-          version: 0.12.2
+          version: 0.12.3
           comment: "false"
           managed-token: ${{ steps.managed_auth.outputs.token }}
           managed-run-id: ${{ steps.managed_auth.outputs.run_id }}
@@ -154,4 +154,4 @@ jobs:
           run-token: ${{ steps.managed_auth.outputs.token }}
           run-id: ${{ steps.managed_auth.outputs.run_id }}
           manifest-hash: ${{ steps.managed_auth.outputs.manifest_hash }}
-          version: 0.12.2
+          version: 0.12.3
