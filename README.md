@@ -1,6 +1,7 @@
 # Polyglot i18n Check — GitHub Action
 
-Compare immutable Git revisions and prevent pull requests from introducing new untranslated strings.
+Compare immutable Git revisions and enforce a repository-owned localization
+policy on pull requests.
 
 The recommended differential mode is brownfield-safe: existing localization debt is reported but allowed, while new untranslated strings fail. The original full-tree scan and coverage behavior remains available as `legacy` mode for every existing v1 workflow.
 
@@ -32,7 +33,6 @@ jobs:
       - name: Polyglot i18n Check
         uses: polyglot-i18n/polyglot-action@v1
         with:
-          api-key: ${{ secrets.POLYGLOT_API_KEY }}
           check-mode: differential
           version: '0.12.3'
           comment: 'false'
@@ -48,6 +48,25 @@ jobs:
 6. Emits GitHub annotations and, when an API key is configured, reports bounded run metadata even when comments are disabled.
 
 Run reports contain counts, immutable SHAs, hashes, conclusions, coverage/validation summaries, and timing metadata. They do not upload source values or finding excerpts.
+
+## Open Action versus Managed Automation
+
+This repository is the complete **open, self-managed** path and is available on
+every Polyglot plan. Your repository owns the workflow and policy. Differential
+mode works without a Polyglot API key; add a key only if you want authenticated
+run reporting or default-branch memory sync.
+
+[Polyglot Automation](https://getpolyglot.ai/github-automation) is the optional
+Team and Scale control plane. It adds native GitHub Checks, central policy and
+history, OIDC-authenticated managed callers, consented catalog sync, human
+review, exact candidate verification, and catalog-only translation pull
+requests. The managed Publisher App never writes directly to the default
+branch.
+
+Choose the open Action when repository-owned CI is enough. Choose managed
+Automation when review, governance, and verified publication need to span a
+team. See the [open CI guide](https://getpolyglot.ai/docs/ci-cd) and
+[Automation docs](https://getpolyglot.ai/docs/automation).
 
 ## Inputs
 
@@ -90,9 +109,12 @@ Legacy mode runs `polyglot scan` and `polyglot coverage` over the whole checked-
 | `has_untranslated` | Whether untranslated strings were found (`true`/`false`). |
 | `average_coverage` | Average translation coverage percentage across configured languages. |
 
-## Getting an API key
+## Optional authenticated reporting
 
-Create a project and copy its API key from the [Polyglot dashboard](https://getpolyglot.ai). Store it as a repository secret (e.g. `POLYGLOT_API_KEY`) and pass it via `api-key`.
+Differential checks run in guest mode without an API key. To report bounded run
+metadata or synchronize translation memory, create a project and copy its API
+key from the [Polyglot dashboard](https://getpolyglot.ai). Store it as a
+repository secret (for example, `POLYGLOT_API_KEY`) and pass it via `api-key`.
 
 ## Keeping the dashboard in sync
 
