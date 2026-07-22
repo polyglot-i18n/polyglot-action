@@ -14,7 +14,7 @@ on:
         required: true
         type: choice
         default: check
-        options: [check, publish]
+        options: [check, catalog_sync, publish]
       run_id:
         description: Polyglot dashboard run ID (leave empty for a standalone run)
         required: false
@@ -25,12 +25,12 @@ permissions:
   id-token: write
 
 concurrency:
-  group: polyglot-${{ github.repository }}-${{ github.ref }}
+  group: polyglot-${{ github.repository }}-${{ github.ref }}-${{ inputs.operation || 'check' }}
   cancel-in-progress: true
 
 jobs:
   polyglot:
-    uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@0344a487375b73412c517f2d3aeed5dc98079ca3
+    uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@73890b5f0cb50e079e524bb89c4efd92983dbef2
     with:
       operation: ${{ inputs.operation || 'check' }}
       run_id: ${{ inputs.run_id || '' }}
