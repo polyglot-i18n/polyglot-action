@@ -28,7 +28,13 @@ else
 fi
 
 echo "Test: publication is dashboard-requested and cannot become a Git writer"
+# Literal GitHub expressions and shell fragments are searched in workflow source.
+# shellcheck disable=SC2016
 if grep -Fq "Managed \$POLYGLOT_OPERATION requires workflow_dispatch and a backend-created run ID" "$MANAGED" &&
+  grep -Fq 'pull_request.head.sha' "$MANAGED" &&
+  grep -Fq '.pull_request.head.repo.fork == true' "$MANAGED" &&
+  grep -Fq 'running the local differential check without dashboard reporting' "$MANAGED" &&
+  grep -Fq 'managed-finding-hash-key: ${{ steps.managed_auth.outputs.finding_hash_key }}' "$MANAGED" &&
   grep -Fq 'fetch_publish_manifest' "$MANAGED" &&
   grep -Fq 'report_publish' "$MANAGED" &&
   grep -Fq "manifest-hash: \${{ steps.managed_auth.outputs.manifest_hash }}" "$MANAGED" &&
@@ -36,6 +42,17 @@ if grep -Fq "Managed \$POLYGLOT_OPERATION requires workflow_dispatch and a backe
   pass "publication remains an immutable verification gate without repository writes"
 else
   fail "publication escaped its Phase 6 trust boundary"
+fi
+
+echo "Test: authentication fallback is limited to check runs from actual forks"
+# shellcheck disable=SC2016
+if grep -Fq '[ "$POLYGLOT_OPERATION" = "check" ]' "$MANAGED" &&
+  grep -Fq '[ "$GITHUB_EVENT_NAME" = "pull_request" ]' "$MANAGED" &&
+  grep -Fq "fallback_allowed=true" "$MANAGED" &&
+  grep -Fq "if [ \"\$fallback_allowed\" = true ]" "$MANAGED"; then
+  pass "fork pull requests retain local annotations without weakening managed events"
+else
+  fail "fork fallback is missing or too broad"
 fi
 
 echo "Test: catalog sync is dashboard-requested, run-scoped, and read-only"

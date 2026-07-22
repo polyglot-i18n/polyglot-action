@@ -61,9 +61,30 @@ jobs:
           POLYGLOT_OIDC_AUDIENCE: https://api.getpolyglot.ai
         run: |
           set -euo pipefail
+          fallback_allowed=false
+          if [ "$POLYGLOT_OPERATION" = "check" ] &&
+            [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+            jq -e '.pull_request.head.repo.fork == true' "$GITHUB_EVENT_PATH" >/dev/null; then
+            fallback_allowed=true
+          fi
+          use_fork_fallback() {
+            echo "::warning::Polyglot managed authentication is unavailable for this fork pull request; running the local differential check without dashboard reporting"
+            {
+              echo "token="
+              echo "run_id="
+              echo "policy_hash="
+              echo "finding_hash_key="
+              echo "manifest_hash="
+            } >> "$GITHUB_OUTPUT"
+          }
+
           oidc_request_url="${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
           oidc_request_token="${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
           if [ -z "$oidc_request_url" ] || [ -z "$oidc_request_token" ]; then
+            if [ "$fallback_allowed" = true ]; then
+              use_fork_fallback
+              exit 0
+            fi
             echo "::error::GitHub OIDC is unavailable; verify id-token: write is granted"
             exit 1
           fi
@@ -79,16 +100,29 @@ jobs:
             -H "Authorization: Bearer $oidc_request_token" \
             "${oidc_request_url}&audience=${audience}")"
           if [ "$oidc_status" != "200" ]; then
+            if [ "$fallback_allowed" = true ]; then
+              use_fork_fallback
+              exit 0
+            fi
             echo "::error::GitHub OIDC token request failed (HTTP $oidc_status)"
             exit 1
           fi
 
           oidc_token="$(jq -er '.value | select(type == "string" and length > 0)' "$oidc_response")"
+          binding_head_sha="$GITHUB_SHA"
+          pull_request_number='null'
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            binding_head_sha="$(jq -er '.pull_request.head.sha | select(test("^[0-9a-f]{40}$"))' "$GITHUB_EVENT_PATH")"
+            pull_request_number="$(jq -er '.pull_request.number | select(type == "number" and . > 0)' "$GITHUB_EVENT_PATH")"
+          fi
           jq -n \
             --arg token "$oidc_token" \
             --arg operation "$POLYGLOT_OPERATION" \
             --arg run_id "$POLYGLOT_REQUESTED_RUN_ID" \
-            '{schema_version: 1, token: $token, operation: $operation, run_id: $run_id}' \
+            --arg head_sha "$binding_head_sha" \
+            --argjson pull_request_number "$pull_request_number" \
+            '{schema_version: 1, token: $token, operation: $operation, run_id: $run_id,
+              head_sha: $head_sha, pull_request_number: $pull_request_number}' \
             > "$exchange_payload"
 
           exchange_status="$(curl --proto '=https' --tlsv1.2 -sS \
@@ -103,6 +137,7 @@ jobs:
                 (.token | type == "string" and startswith("pgr_")) and
                 (.run_id | type == "string" and length > 0) and
                 (.policy_hash | type == "string" and test("^sha256:[0-9a-f]{64}$")) and
+                (.finding_hash_key | type == "string" and test("^[A-Za-z0-9_-]{43}$")) and
                 (.operations | index("start")) != null and
                 (.operations | index("fetch_policy")) != null and
                 (.operations | index("report_check")) != null'
@@ -129,22 +164,29 @@ jobs:
           if [ "$exchange_status" != "200" ] ||
             ! jq -e --arg run_id "$POLYGLOT_REQUESTED_RUN_ID" "$valid_response" \
               "$exchange_response" >/dev/null; then
+            if [ "$fallback_allowed" = true ]; then
+              use_fork_fallback
+              exit 0
+            fi
             echo "::error::Polyglot managed authentication failed (HTTP $exchange_status)"
             exit 1
           fi
 
           run_token="$(jq -r '.token' "$exchange_response")"
+          finding_hash_key="$(jq -r '.finding_hash_key // empty' "$exchange_response")"
           echo "::add-mask::$run_token"
+          if [ -n "$finding_hash_key" ]; then echo "::add-mask::$finding_hash_key"; fi
           {
             echo "token=$run_token"
             echo "run_id=$(jq -r '.run_id' "$exchange_response")"
             echo "policy_hash=$(jq -r '.policy_hash // empty' "$exchange_response")"
+            echo "finding_hash_key=$finding_hash_key"
             echo "manifest_hash=$(jq -r '.manifest_hash // empty' "$exchange_response")"
           } >> "$GITHUB_OUTPUT"
 
       - name: Run the managed Polyglot check
         if: inputs.operation == 'check'
-        uses: polyglot-i18n/polyglot-action@0142fb19d9f8bb45e9474dd871781e0cbb988274
+        uses: polyglot-i18n/polyglot-action@7725216acb2619c86e87bebbf0fe791ad0cc9cd2
         with:
           api-url: https://api.getpolyglot.ai
           check-mode: differential
@@ -153,10 +195,11 @@ jobs:
           managed-token: ${{ steps.managed_auth.outputs.token }}
           managed-run-id: ${{ steps.managed_auth.outputs.run_id }}
           managed-policy-hash: ${{ steps.managed_auth.outputs.policy_hash }}
+          managed-finding-hash-key: ${{ steps.managed_auth.outputs.finding_hash_key }}
 
       - name: Sync the managed catalog inventory
         if: inputs.operation == 'catalog_sync'
-        uses: polyglot-i18n/polyglot-action/catalog-sync@692d8a61bc3f801591b2bd3aab582c7f17f6d775
+        uses: polyglot-i18n/polyglot-action/catalog-sync@7725216acb2619c86e87bebbf0fe791ad0cc9cd2
         with:
           api-url: https://api.getpolyglot.ai
           run-token: ${{ steps.managed_auth.outputs.token }}
@@ -165,7 +208,7 @@ jobs:
 
       - name: Materialize and verify approved catalogs
         if: inputs.operation == 'publish'
-        uses: polyglot-i18n/polyglot-action/publication@c5dda8ce925c702a4850cd113b8d2016b81ff782
+        uses: polyglot-i18n/polyglot-action/publication@7725216acb2619c86e87bebbf0fe791ad0cc9cd2
         with:
           api-url: https://api.getpolyglot.ai
           run-token: ${{ steps.managed_auth.outputs.token }}
