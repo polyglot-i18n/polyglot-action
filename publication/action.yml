@@ -49,6 +49,7 @@ runs:
         /tmp/polyglot-publish-manifest.json
         /tmp/polyglot-publish-report.json
         /tmp/polyglot-publish-payload.json
+        "${{ inputs.manifest-hash }}"
 
     - name: Report publication result and catalog artifacts
       if: always()

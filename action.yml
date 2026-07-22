@@ -41,6 +41,10 @@ inputs:
     description: 'Immutable managed policy hash bound to the run'
     required: false
     default: ''
+  managed-finding-hash-key:
+    description: 'Run-bound HMAC key returned by the managed OIDC exchange'
+    required: false
+    default: ''
   fail_on_untranslated:
     description: 'Fail the check if untranslated strings are found'
     required: false
@@ -103,6 +107,7 @@ runs:
         POLYGLOT_RUN_TOKEN: ${{ inputs.managed-token }}
         POLYGLOT_RUN_ID: ${{ inputs.managed-run-id }}
         POLYGLOT_POLICY_HASH: ${{ inputs.managed-policy-hash }}
+        POLYGLOT_FINDING_HASH_KEY: ${{ inputs.managed-finding-hash-key }}
         POLYGLOT_COMMENT: ${{ inputs.comment }}
       run: ${{ github.action_path }}/scripts/validate-action-inputs.sh "$CHECK_MODE" "$API_URL"
 
@@ -249,6 +254,7 @@ runs:
         POLYGLOT_API_URL: ${{ inputs.api-url }}
         POLYGLOT_RUN_TOKEN: ${{ inputs.managed-token }}
         POLYGLOT_RUN_ID: ${{ inputs.managed-run-id }}
+        POLYGLOT_FINDING_HASH_KEY: ${{ inputs.managed-finding-hash-key }}
         POLYGLOT_BASE_SHA: ${{ steps.revisions.outputs.base_sha }}
         POLYGLOT_HEAD_SHA: ${{ steps.revisions.outputs.head_sha }}
         POLYGLOT_BRANCH: ${{ steps.revisions.outputs.branch }}

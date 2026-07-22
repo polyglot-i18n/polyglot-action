@@ -108,6 +108,9 @@ rm -f "$TMP/repo/source.ts"
 cat > "$TMP/bin/polyglot" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ -n "${PUBLICATION_INVOKED:-}" ]; then
+  : > "$PUBLICATION_INVOKED"
+fi
 report=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -119,11 +122,28 @@ cp "$PUBLICATION_REPORT_SOURCE" "$report"
 EOF
 chmod +x "$TMP/bin/polyglot"
 
+echo "Test: a stale checkout is rejected before catalog materialization"
+printf 'new revision\n' > "$TMP/repo/unrelated.md"
+git -C "$TMP/repo" add unrelated.md
+git -C "$TMP/repo" commit -qm newer
+if ! PATH="$TMP/bin:$PATH" PUBLICATION_INVOKED="$TMP/invoked" \
+    "$ROOT/scripts/run-publication.sh" "$TMP/repo" "$TMP/manifest.json" \
+    "$TMP/base-report.json" "$TMP/base-payload.json" "$MANIFEST_HASH" >/dev/null 2>&1 &&
+  [ ! -e "$TMP/invoked" ] &&
+  [ "$(jq -r '.report.status' "$TMP/base-payload.json")" = "incomplete" ] &&
+  [ "$(jq -r '.report.errors[0].code' "$TMP/base-payload.json")" = "base_revision_mismatch" ] &&
+  [ "$(jq '.files | length' "$TMP/base-payload.json")" -eq 0 ]; then
+  pass "publication requires the exact signed base revision"
+else
+  fail "publication materialized against a stale checkout"
+fi
+git -C "$TMP/repo" checkout -q --detach "$BASE_SHA"
+
 echo "Test: a final diff mismatch still produces a source-free incomplete report"
 printf 'changed\n' > "$TMP/repo/source.ts"
 if ! PATH="$TMP/bin:$PATH" PUBLICATION_REPORT_SOURCE="$TMP/report.json" \
     "$ROOT/scripts/run-publication.sh" "$TMP/repo" "$TMP/manifest.json" \
-    "$TMP/run-report.json" "$TMP/rejected-payload.json" >/dev/null 2>&1 &&
+    "$TMP/run-report.json" "$TMP/rejected-payload.json" "$MANIFEST_HASH" >/dev/null 2>&1 &&
   [ "$(jq -r '.report.status' "$TMP/rejected-payload.json")" = "incomplete" ] &&
   [ "$(jq '.files | length' "$TMP/rejected-payload.json")" -eq 0 ] &&
   ! jq -e '.. | strings | select(. == "Neu" or . == "Alt" or . == "changed")' \

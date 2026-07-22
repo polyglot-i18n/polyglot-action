@@ -14,23 +14,26 @@ fail() { FAILED=$((FAILED + 1)); echo "  FAIL: $1"; }
 RUN_ID="123e4567-e89b-12d3-a456-426614174000"
 POLICY_HASH="sha256:$(printf 'a%.0s' {1..64})"
 RUN_TOKEN="pgr_test_short_lived_secret"
+FINDING_HASH_KEY="$(printf 'A%.0s' {1..43})"
 
 validate_inputs() {
   POLYGLOT_API_KEY="${1:-}" \
     POLYGLOT_RUN_TOKEN="${2:-}" \
     POLYGLOT_RUN_ID="${3:-}" \
     POLYGLOT_POLICY_HASH="${4:-}" \
-    POLYGLOT_COMMENT="${5:-false}" \
-    "$ROOT/scripts/validate-action-inputs.sh" "${6:-differential}" https://api.example.test
+    POLYGLOT_FINDING_HASH_KEY="${5:-}" \
+    POLYGLOT_COMMENT="${6:-false}" \
+    "$ROOT/scripts/validate-action-inputs.sh" "${7:-differential}" https://api.example.test
 }
 
 echo "Test: managed credentials are an all-or-nothing, differential-only boundary"
-if validate_inputs "" "$RUN_TOKEN" "$RUN_ID" "$POLICY_HASH" false differential &&
-  ! validate_inputs "" "$RUN_TOKEN" "" "$POLICY_HASH" false differential >/dev/null 2>&1 &&
-  ! validate_inputs "pgt_project" "$RUN_TOKEN" "$RUN_ID" "$POLICY_HASH" false differential >/dev/null 2>&1 &&
-  ! validate_inputs "" "$RUN_TOKEN" "$RUN_ID" "$POLICY_HASH" true differential >/dev/null 2>&1 &&
-  ! validate_inputs "" "$RUN_TOKEN" "$RUN_ID" "$POLICY_HASH" false legacy >/dev/null 2>&1 &&
-  ! validate_inputs "" "$RUN_TOKEN" "not-a-uuid" "$POLICY_HASH" false differential >/dev/null 2>&1; then
+if validate_inputs "" "$RUN_TOKEN" "$RUN_ID" "$POLICY_HASH" "$FINDING_HASH_KEY" false differential &&
+  ! validate_inputs "" "$RUN_TOKEN" "" "$POLICY_HASH" "$FINDING_HASH_KEY" false differential >/dev/null 2>&1 &&
+  ! validate_inputs "pgt_project" "$RUN_TOKEN" "$RUN_ID" "$POLICY_HASH" "$FINDING_HASH_KEY" false differential >/dev/null 2>&1 &&
+  ! validate_inputs "" "$RUN_TOKEN" "$RUN_ID" "$POLICY_HASH" "$FINDING_HASH_KEY" true differential >/dev/null 2>&1 &&
+  ! validate_inputs "" "$RUN_TOKEN" "$RUN_ID" "$POLICY_HASH" "$FINDING_HASH_KEY" false legacy >/dev/null 2>&1 &&
+  ! validate_inputs "" "$RUN_TOKEN" "not-a-uuid" "$POLICY_HASH" "$FINDING_HASH_KEY" false differential >/dev/null 2>&1 &&
+  ! validate_inputs "" "$RUN_TOKEN" "$RUN_ID" "$POLICY_HASH" "short" false differential >/dev/null 2>&1; then
   pass "managed inputs fail closed"
 else
   fail "managed input validation accepted an unsafe combination"
@@ -60,9 +63,10 @@ cat > "$TMP/result.json" <<'EOF'
 EOF
 
 echo "Test: managed findings are hashed before transport"
+export POLYGLOT_FINDING_HASH_KEY="$FINDING_HASH_KEY"
 "$ROOT/scripts/redact-managed-result.py" "$TMP/result.json" "$TMP/redacted.json"
 if [ "$(jq -r '.findings[0] | has("value")' "$TMP/redacted.json")" = "false" ] &&
-  [[ "$(jq -r '.findings[0].value_hash' "$TMP/redacted.json")" =~ ^sha256:[0-9a-f]{64}$ ]] &&
+  [[ "$(jq -r '.findings[0].value_hash' "$TMP/redacted.json")" =~ ^hmac-sha256:[0-9a-f]{64}$ ]] &&
   ! grep -q 'Customer private source value' "$TMP/redacted.json"; then
   pass "raw finding values never leave the runner"
 else
@@ -153,7 +157,7 @@ export GITHUB_RUN_ID=999
 export GITHUB_RUN_ATTEMPT=1
 "$ROOT/scripts/report-run.sh" "$TMP/result.json" > "$TMP/report-output"
 if [ "$(jq -r '.result.findings[0] | has("value")' "$MANAGED_REPORT_PAYLOAD")" = "false" ] &&
-  [[ "$(jq -r '.result.findings[0].value_hash' "$MANAGED_REPORT_PAYLOAD")" =~ ^sha256:[0-9a-f]{64}$ ]] &&
+  [[ "$(jq -r '.result.findings[0].value_hash' "$MANAGED_REPORT_PAYLOAD")" =~ ^hmac-sha256:[0-9a-f]{64}$ ]] &&
   [ "$(jq -r 'has("error")' "$MANAGED_REPORT_PAYLOAD")" = "false" ] &&
   ! grep -q 'Customer private source value' "$MANAGED_REPORT_PAYLOAD" &&
   ! grep -q "$RUN_TOKEN" "$TMP/report-output"; then
