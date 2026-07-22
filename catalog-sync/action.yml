@@ -1,0 +1,75 @@
+name: Polyglot managed catalog sync
+description: Upload the connected repository's catalogs using a run-scoped Polyglot credential
+
+inputs:
+  api-url:
+    description: Polyglot API origin
+    required: true
+  run-token:
+    description: Short-lived managed catalog-sync credential
+    required: true
+  run-id:
+    description: Backend-created catalog-sync run UUID
+    required: true
+  version:
+    description: Polyglot CLI version
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve Polyglot configuration
+      id: config
+      shell: bash
+      run: ${{ github.action_path }}/../scripts/resolve-config.sh ""
+
+    - name: Install Polyglot CLI
+      shell: bash
+      env:
+        REQUESTED_VERSION: ${{ inputs.version }}
+      run: |
+        INSTALL_DIR="$RUNNER_TEMP/polyglot-action/bin"
+        ${{ github.action_path }}/../scripts/install-cli.sh "$REQUESTED_VERSION" "$INSTALL_DIR"
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+    - name: Sync catalog inventory
+      id: sync
+      continue-on-error: true
+      shell: bash
+      working-directory: ${{ steps.config.outputs.working_directory }}
+      env:
+        POLYGLOT_API_URL: ${{ inputs.api-url }}
+        POLYGLOT_API_KEY: ${{ inputs.run-token }}
+        POLYGLOT_MANAGED_CATALOG_SYNC_RUN_ID: ${{ inputs.run-id }}
+      run: polyglot push
+
+    - name: Report catalog sync outcome
+      if: always()
+      shell: bash
+      env:
+        POLYGLOT_API_URL: ${{ inputs.api-url }}
+        POLYGLOT_RUN_TOKEN: ${{ inputs.run-token }}
+        POLYGLOT_RUN_ID: ${{ inputs.run-id }}
+        POLYGLOT_SYNC_OUTCOME: ${{ steps.sync.outcome }}
+      run: |
+        set -euo pipefail
+        report_file="$(mktemp)"
+        trap 'rm -f "$report_file"' EXIT
+        if [ "$POLYGLOT_SYNC_OUTCOME" = "success" ]; then
+          jq -n '{schema_version: 1, status: "success"}' > "$report_file"
+        else
+          jq -n '{schema_version: 1, status: "failure", error: {code: "catalog_sync_failed", message: "The managed catalog sync command failed. Review the workflow log, correct the repository configuration, and retry from Polyglot."}}' > "$report_file"
+        fi
+
+        status="$(curl --proto '=https' --tlsv1.2 -sS -o /tmp/polyglot-catalog-sync-report.json -w '%{http_code}' \
+          -X POST "$POLYGLOT_API_URL/api/v1/ci/catalog-sync/$POLYGLOT_RUN_ID/report" \
+          -H "Authorization: Bearer $POLYGLOT_RUN_TOKEN" \
+          -H 'Content-Type: application/json' \
+          --data-binary "@$report_file")"
+        if [ "$status" != "200" ] && [ "$status" != "201" ]; then
+          echo "::error::Polyglot rejected the catalog sync outcome (HTTP $status)"
+          exit 1
+        fi
+        if [ "$POLYGLOT_SYNC_OUTCOME" != "success" ]; then
+          exit 1
+        fi
