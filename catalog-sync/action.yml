@@ -14,6 +14,12 @@ inputs:
   version:
     description: Polyglot CLI version
     required: true
+  config-path:
+    description: >-
+      Repository-relative path to the connected project's polyglot.toml, as
+      returned by the Polyglot OIDC exchange.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -21,7 +27,9 @@ runs:
     - name: Resolve Polyglot configuration
       id: config
       shell: bash
-      run: ${{ github.action_path }}/../scripts/resolve-config.sh ""
+      env:
+        CONFIG_PATH: ${{ inputs.config-path }}
+      run: ${{ github.action_path }}/../scripts/resolve-config.sh "$CONFIG_PATH"
 
     - name: Install Polyglot CLI
       shell: bash

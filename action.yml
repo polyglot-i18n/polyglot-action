@@ -166,17 +166,25 @@ runs:
         POLYGLOT_INFORMATIONAL: ${{ steps.revisions.outputs.informational }}
         POLYGLOT_POLICY_FILE: ${{ inputs.managed-token != '' && '/tmp/polyglot-managed-policy.json' || '' }}
         POLYGLOT_POLICY_HASH: ${{ inputs.managed-policy-hash }}
-        WORKING_DIRECTORY: ${{ steps.config.outputs.working_directory }}
+        # `polyglot check` builds worktrees from the repository root, so the
+        # differential run starts there and addresses the project by its
+        # root-relative config path.
+        WORKING_DIRECTORY: ${{ github.workspace }}
+        CONFIG_PATH: ${{ steps.config.outputs.config_path }}
         BASE_SHA: ${{ steps.revisions.outputs.base_sha }}
         HEAD_SHA: ${{ steps.revisions.outputs.head_sha }}
       run: >-
         ${{ github.action_path }}/scripts/run-check.sh "$WORKING_DIRECTORY"
-        "$BASE_SHA" "$HEAD_SHA" /tmp/polyglot-check.json
+        "$BASE_SHA" "$HEAD_SHA" /tmp/polyglot-check.json "$CONFIG_PATH"
 
     - name: Emit differential annotations
       if: inputs.check-mode == 'differential' && steps.check.outputs.result_available == 'true'
       shell: bash
-      run: ${{ github.action_path }}/scripts/emit-annotations.sh /tmp/polyglot-check.json
+      env:
+        CONFIG_PATH: ${{ steps.config.outputs.config_path }}
+      run: >-
+        ${{ github.action_path }}/scripts/emit-annotations.sh
+        /tmp/polyglot-check.json "$CONFIG_PATH"
 
     - name: Generate PR comment
       if: inputs.check-mode == 'legacy' && inputs.comment == 'true' && github.event_name == 'pull_request'

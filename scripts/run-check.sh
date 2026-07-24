@@ -5,6 +5,9 @@ WORKING_DIRECTORY="${1:?working directory is required}"
 BASE_SHA="${2:?base SHA is required}"
 HEAD_SHA="${3:?head SHA is required}"
 JSON_OUTPUT="${4:-/tmp/polyglot-check.json}"
+# Repository-root-relative, because `polyglot check` reads its config out of the
+# base and head worktrees it creates, not out of the current directory.
+CONFIG_PATH="${5:-${POLYGLOT_CONFIG_PATH:-polyglot.toml}}"
 OUTPUT_FILE="${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 ACTION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STDOUT_FILE="$(mktemp)"
@@ -13,7 +16,12 @@ STARTED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 START_SECONDS="$(date +%s)"
 trap 'rm -f "$STDOUT_FILE" "$STDERR_FILE"' EXIT
 
-ARGS=(check --base "$BASE_SHA" --head "$HEAD_SHA" --config-path polyglot.toml --format json)
+if [[ "$CONFIG_PATH" = /* || "$CONFIG_PATH" == *".."* || "$CONFIG_PATH" == *$'\n'* ]]; then
+  echo "::error::config path must be a relative path inside the repository" >&2
+  exit 2
+fi
+
+ARGS=(check --base "$BASE_SHA" --head "$HEAD_SHA" --config-path "$CONFIG_PATH" --format json)
 if [ -n "${POLYGLOT_POLICY_FILE:-}" ]; then
   if [ ! -f "$POLYGLOT_POLICY_FILE" ]; then
     echo "::error::managed policy snapshot is unavailable" >&2

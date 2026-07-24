@@ -13,6 +13,14 @@ on:
         required: false
         default: ""
         type: string
+      config_path:
+        description: >-
+          Repository-relative path to this project's polyglot.toml. Required
+          only when one repository is connected under several config roots;
+          run one job per root and set this to each.
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -57,6 +65,7 @@ jobs:
         env:
           POLYGLOT_OPERATION: ${{ inputs.operation }}
           POLYGLOT_REQUESTED_RUN_ID: ${{ inputs.run_id }}
+          POLYGLOT_REQUESTED_CONFIG_PATH: ${{ inputs.config_path }}
           POLYGLOT_API_URL: https://api.getpolyglot.ai
           POLYGLOT_OIDC_AUDIENCE: https://api.getpolyglot.ai
         run: |
@@ -75,6 +84,7 @@ jobs:
               echo "policy_hash="
               echo "finding_hash_key="
               echo "manifest_hash="
+              echo "config_path=$POLYGLOT_REQUESTED_CONFIG_PATH"
             } >> "$GITHUB_OUTPUT"
           }
 
@@ -119,10 +129,12 @@ jobs:
             --arg token "$oidc_token" \
             --arg operation "$POLYGLOT_OPERATION" \
             --arg run_id "$POLYGLOT_REQUESTED_RUN_ID" \
+            --arg config_path "$POLYGLOT_REQUESTED_CONFIG_PATH" \
             --arg head_sha "$binding_head_sha" \
             --argjson pull_request_number "$pull_request_number" \
             '{schema_version: 1, token: $token, operation: $operation, run_id: $run_id,
-              head_sha: $head_sha, pull_request_number: $pull_request_number}' \
+              head_sha: $head_sha, pull_request_number: $pull_request_number}
+             | if $config_path == "" then . else . + {config_path: $config_path} end' \
             > "$exchange_payload"
 
           exchange_status="$(curl --proto '=https' --tlsv1.2 -sS \
@@ -138,6 +150,9 @@ jobs:
                 (.run_id | type == "string" and length > 0) and
                 (.policy_hash | type == "string" and test("^sha256:[0-9a-f]{64}$")) and
                 (.finding_hash_key | type == "string" and test("^[A-Za-z0-9_-]{43}$")) and
+                (.config_path | type == "string" and length > 0 and
+                  (startswith("/") | not) and (contains("..") | not) and
+                  endswith("polyglot.toml")) and
                 (.operations | index("start")) != null and
                 (.operations | index("fetch_policy")) != null and
                 (.operations | index("report_check")) != null'
@@ -182,6 +197,7 @@ jobs:
             echo "policy_hash=$(jq -r '.policy_hash // empty' "$exchange_response")"
             echo "finding_hash_key=$finding_hash_key"
             echo "manifest_hash=$(jq -r '.manifest_hash // empty' "$exchange_response")"
+            echo "config_path=$(jq -r '.config_path // empty' "$exchange_response")"
           } >> "$GITHUB_OUTPUT"
 
       - name: Run the managed Polyglot check
@@ -192,6 +208,7 @@ jobs:
           check-mode: differential
           version: 0.12.3
           comment: "false"
+          config_path: ${{ steps.managed_auth.outputs.config_path }}
           managed-token: ${{ steps.managed_auth.outputs.token }}
           managed-run-id: ${{ steps.managed_auth.outputs.run_id }}
           managed-policy-hash: ${{ steps.managed_auth.outputs.policy_hash }}
@@ -205,6 +222,7 @@ jobs:
           run-token: ${{ steps.managed_auth.outputs.token }}
           run-id: ${{ steps.managed_auth.outputs.run_id }}
           version: 0.12.3
+          config-path: ${{ steps.managed_auth.outputs.config_path }}
 
       - name: Materialize and verify approved catalogs
         if: inputs.operation == 'publish'

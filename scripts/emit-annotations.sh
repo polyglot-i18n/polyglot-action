@@ -4,6 +4,16 @@ set -euo pipefail
 RESULT_FILE="${1:?check result file is required}"
 MAX_ANNOTATIONS="${POLYGLOT_MAX_ANNOTATIONS:-50}"
 
+# Findings are relative to the project that owns polyglot.toml. GitHub resolves
+# annotation paths from the repository root, so a project in a subdirectory
+# needs its prefix restored or the annotation lands on a file that is not there.
+PROJECT_PREFIX="$(dirname "${2:-${POLYGLOT_CONFIG_PATH:-polyglot.toml}}")"
+if [ "$PROJECT_PREFIX" = "." ] || [ "$PROJECT_PREFIX" = "/" ]; then
+  PROJECT_PREFIX=""
+else
+  PROJECT_PREFIX="${PROJECT_PREFIX%/}/"
+fi
+
 if ! [[ "$MAX_ANNOTATIONS" =~ ^[0-9]+$ ]] || [ "$MAX_ANNOTATIONS" -lt 1 ] || [ "$MAX_ANNOTATIONS" -gt 50 ]; then
   echo "::error::POLYGLOT_MAX_ANNOTATIONS must be an integer from 1 to 50" >&2
   exit 1
@@ -45,8 +55,8 @@ while IFS= read -r encoded; do
   suggestion="$(printf '%s' "$finding" | jq -r '.remediation.suggestion')"
   message="New untranslated string. ${suggestion}"
   printf '::%s file=%s,line=%s,col=%s,endLine=%s,endColumn=%s,title=Polyglot i18n::%s\n' \
-    "$level" "$(escape_property "$path")" "$line" "$column" "$end_line" "$end_column" \
-    "$(escape_data "$message")"
+    "$level" "$(escape_property "${PROJECT_PREFIX}${path}")" "$line" "$column" "$end_line" \
+    "$end_column" "$(escape_data "$message")"
   EMITTED=$((EMITTED + 1))
 done < <(jq -r '.findings[] | select(.classification == "new") | @base64' "$RESULT_FILE")
 
