@@ -71,9 +71,10 @@ run_check() {
   local head="$2"
   local result="$3"
   local output="$4"
+  local config_path="${5:-polyglot.toml}"
   export GITHUB_OUTPUT="$output"
   : > "$GITHUB_OUTPUT"
-  "$ROOT/scripts/run-check.sh" "$TMP/repo" "$base" "$head" "$result"
+  "$ROOT/scripts/run-check.sh" "$TMP/repo" "$base" "$head" "$result" "$config_path"
 }
 
 echo "Test: no-new policy permits existing debt on a clean PR"
@@ -104,6 +105,70 @@ if grep -q '^exit_code=2$' "$TMP/broken.outputs" &&
   pass "parse errors fail closed"
 else
   fail "parse error did not require action"
+fi
+
+echo "Test: a nested config root scans that project, not the repository root"
+# Built in its own repository so the shared fixture's revisions stay pinned.
+mkdir -p "$TMP/monorepo/apps/web/src"
+git -C "$TMP/monorepo" init --quiet
+git -C "$TMP/monorepo" config user.email ci@example.com
+git -C "$TMP/monorepo" config user.name CI
+cat > "$TMP/monorepo/apps/web/polyglot.toml" <<'EOF'
+[project]
+name = "nested-app"
+framework = "nextjs"
+source_language = "en"
+target_languages = ["de"]
+
+[ci]
+policy = "no-new"
+max_new_findings = 0
+EOF
+cat > "$TMP/monorepo/apps/web/src/home.tsx" <<'EOF'
+export default function Home() { return <main>Nested existing debt</main>; }
+EOF
+git -C "$TMP/monorepo" add apps
+git -C "$TMP/monorepo" commit --quiet -m nested-base
+NESTED_BASE="$(git -C "$TMP/monorepo" rev-parse HEAD)"
+
+cat > "$TMP/monorepo/apps/web/src/cart.tsx" <<'EOF'
+export function Cart() { return <button>Nested new label</button>; }
+EOF
+git -C "$TMP/monorepo" add apps/web/src/cart.tsx
+git -C "$TMP/monorepo" commit --quiet -m nested-new
+NESTED_HEAD="$(git -C "$TMP/monorepo" rev-parse HEAD)"
+
+export GITHUB_OUTPUT="$TMP/nested.outputs"
+: > "$GITHUB_OUTPUT"
+"$ROOT/scripts/run-check.sh" "$TMP/monorepo" "$NESTED_BASE" "$NESTED_HEAD" \
+  "$TMP/nested.json" apps/web/polyglot.toml
+if [ "$(jq -r '.config_path' "$TMP/nested.json")" = "apps/web/polyglot.toml" ] &&
+  [ "$(jq -r '.delta.new' "$TMP/nested.json")" -eq 1 ] &&
+  [ "$(jq -r 'any(.findings[]; .path == "src/cart.tsx" and .classification == "new")' \
+    "$TMP/nested.json")" = "true" ]; then
+  pass "nested config root is scanned and addressed by its repository-relative config path"
+else
+  fail "nested config root was not honored"
+fi
+
+# Findings are project-relative, but a GitHub annotation is only placed
+# correctly when its path is repository-relative.
+POLYGLOT_CONFIG_PATH=apps/web/polyglot.toml \
+  "$ROOT/scripts/emit-annotations.sh" "$TMP/nested.json" > "$TMP/nested.annotations"
+if grep -q 'file=apps/web/src/cart.tsx' "$TMP/nested.annotations" &&
+  ! grep -q 'file=src/cart.tsx' "$TMP/nested.annotations"; then
+  pass "annotations for a nested project resolve from the repository root"
+else
+  fail "nested annotations pointed at a path that does not exist in the repository"
+fi
+
+export GITHUB_OUTPUT="$TMP/escape.outputs"
+: > "$GITHUB_OUTPUT"
+if ! "$ROOT/scripts/run-check.sh" "$TMP/monorepo" "$NESTED_BASE" "$NESTED_HEAD" \
+  "$TMP/escape.json" ../outside/polyglot.toml >/dev/null 2>&1; then
+  pass "a config path outside the repository is rejected"
+else
+  fail "config path traversal was accepted"
 fi
 
 echo "Test: managed policy hash drift fails closed before report upload"
@@ -146,6 +211,45 @@ if grep -q '^result_available=true$' "$TMP/managed.outputs" &&
   pass "managed CLI and backend policy hashes agree"
 else
   fail "managed CLI and backend policy hashes drifted"
+fi
+
+echo "Test: a policy carrying thresholds hashes identically to the backend canonical form"
+cat > "$TMP/threshold-policy.json" <<'EOF'
+{
+  "schema_version": 1,
+  "preset": "required-language-minimums",
+  "max_new_findings": 0,
+  "max_total_findings": null,
+  "coverage_may_not_decrease": true,
+  "minimum_coverage": 90.0,
+  "required_languages": ["de"],
+  "minimum_coverage_by_language": {"de": 80.0},
+  "validation_errors_must_be_zero": false,
+  "scan_must_be_complete": true,
+  "configuration_changes_require_approval": false,
+  "configuration_change_approved": false
+}
+EOF
+# Recomputes the backend's canonical JSON independently: sorted keys, no
+# whitespace, and the same numeric rendering the CLI emits. A drift in any of
+# the three implementations shows up here rather than on a customer's PR.
+EXPECTED_THRESHOLD_HASH="sha256:$(python3 -c '
+import hashlib, json, sys
+policy = json.load(open(sys.argv[1]))
+canonical = json.dumps(policy, sort_keys=True, separators=(",", ":"))
+print(hashlib.sha256(canonical.encode()).hexdigest())
+' "$TMP/threshold-policy.json")"
+
+export POLYGLOT_POLICY_FILE="$TMP/threshold-policy.json"
+export POLYGLOT_POLICY_HASH="$EXPECTED_THRESHOLD_HASH"
+run_check "$BASE" "$CLEAN" "$TMP/thresholds.json" "$TMP/thresholds.outputs"
+unset POLYGLOT_POLICY_FILE POLYGLOT_POLICY_HASH
+if grep -q '^result_available=true$' "$TMP/thresholds.outputs" &&
+  [ "$(jq -r '.policy_hash' "$TMP/thresholds.json")" = "$EXPECTED_THRESHOLD_HASH" ] &&
+  [ "$(jq -r '.policy.minimum_coverage' "$TMP/thresholds.json")" = "90.0" ]; then
+  pass "threshold policies hash identically across the CLI and backend"
+else
+  fail "threshold policy hashing drifted between the CLI and backend"
 fi
 
 write_event() {

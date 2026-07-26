@@ -34,3 +34,19 @@ jobs:
     with:
       operation: ${{ inputs.operation || 'check' }}
       run_id: ${{ inputs.run_id || '' }}
+
+# Monorepos connect one Polyglot project per config root. A workflow job speaks
+# for exactly one of them, so name the root in each job:
+#
+#   jobs:
+#     polyglot:
+#       strategy:
+#         matrix:
+#           config_path:
+#             - apps/web/polyglot.toml
+#             - apps/admin/polyglot.toml
+#       uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@68378ba9e6d69c60a235a214b892936fac53b157
+#       with:
+#         operation: ${{ inputs.operation || 'check' }}
+#         run_id: ${{ inputs.run_id || '' }}
+#         config_path: ${{ matrix.config_path }}
