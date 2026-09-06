@@ -208,3 +208,19 @@ fi
 echo
 echo "Results: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
+
+# A caller pin cannot substitute an older writer for a newer reviewed snapshot.
+VERSION_SCRIPT="$ROOT/scripts/publication-cli-version.sh"
+jq '.cli_version = "0.13.10"' "$TMP/manifest.json" > "$TMP/version-manifest.json"
+[ "$("$VERSION_SCRIPT" "$TMP/version-manifest.json")" = "0.13.10" ]
+[ "$("$VERSION_SCRIPT" "$TMP/version-manifest.json" v0.13.10)" = "0.13.10" ]
+if "$VERSION_SCRIPT" "$TMP/version-manifest.json" 0.12.3 >/dev/null 2>&1; then
+  echo 'FAIL: publication accepted a mismatched caller CLI pin' >&2
+  exit 1
+fi
+jq '.cli_version = "../../untrusted"' "$TMP/manifest.json" > "$TMP/unsafe-version.json"
+if "$VERSION_SCRIPT" "$TMP/unsafe-version.json" >/dev/null 2>&1; then
+  echo 'FAIL: publication accepted a non-release version' >&2
+  exit 1
+fi
+echo 'PASS: publication CLI follows the authenticated manifest and rejects mismatches'
