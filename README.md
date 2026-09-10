@@ -34,7 +34,7 @@ jobs:
         uses: polyglot-i18n/polyglot-action@v1
         with:
           check-mode: differential
-          version: '0.12.3'
+          version: '0.14.2'
           comment: 'false'
 ```
 

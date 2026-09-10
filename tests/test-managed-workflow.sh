@@ -17,8 +17,8 @@ if grep -Eq 'uses: actions/checkout@[0-9a-f]{40}$' "$MANAGED" &&
   grep -Eq 'uses: polyglot-i18n/polyglot-action@[0-9a-f]{40}$' "$MANAGED" &&
   grep -Eq 'uses: polyglot-i18n/polyglot-action/catalog-sync@[0-9a-f]{40}$' "$MANAGED" &&
   grep -Eq 'uses: polyglot-i18n/polyglot-action/publication@[0-9a-f]{40}$' "$MANAGED" &&
-  [ "$(grep -c '^          version: 0.12.3$' "$MANAGED")" -eq 2 ] &&
-  grep -q '^  POLYGLOT_CLI_VERSION: 0.12.3$' "$CI" &&
+  [ "$(grep -c '^          version: 0.14.2$' "$MANAGED")" -eq 2 ] &&
+  grep -q '^  POLYGLOT_CLI_VERSION: 0.14.2$' "$CI" &&
   grep -Fq "install-cli.sh \"\$POLYGLOT_CLI_VERSION\"" "$CI" &&
   grep -Eq 'uses: polyglot-i18n/polyglot-action/\.github/workflows/managed\.yml@[0-9a-f]{40}$' "$CALLER" &&
   ! grep -Eq 'uses: .*@(main|master|v[0-9]+([.]|$))' "$MANAGED" "$CALLER"; then
