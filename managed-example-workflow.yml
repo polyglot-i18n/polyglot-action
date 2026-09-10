@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   polyglot:
-    uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@68378ba9e6d69c60a235a214b892936fac53b157
+    uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@7f534a6058a0222997c2016b2c30a6d95e650e4f
     with:
       operation: ${{ inputs.operation || 'check' }}
       run_id: ${{ inputs.run_id || '' }}
@@ -45,7 +45,7 @@ jobs:
 #           config_path:
 #             - apps/web/polyglot.toml
 #             - apps/admin/polyglot.toml
-#       uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@68378ba9e6d69c60a235a214b892936fac53b157
+#       uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@7f534a6058a0222997c2016b2c30a6d95e650e4f
 #       with:
 #         operation: ${{ inputs.operation || 'check' }}
 #         run_id: ${{ inputs.run_id || '' }}

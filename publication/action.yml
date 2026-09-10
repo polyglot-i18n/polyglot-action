@@ -15,22 +15,13 @@ inputs:
     description: Immutable publication manifest digest
     required: true
   version:
-    description: Exact Polyglot CLI release required by the publication manifest
-    required: true
+    description: Optional assertion of the exact CLI version; must match the authenticated manifest
+    required: false
+    default: ''
 
 runs:
   using: composite
   steps:
-    - name: Install publication CLI
-      shell: bash
-      env:
-        REQUESTED_VERSION: ${{ inputs.version }}
-      run: |
-        set -euo pipefail
-        install_dir="$RUNNER_TEMP/polyglot-publication/bin"
-        "$GITHUB_ACTION_PATH/../scripts/install-cli.sh" "$REQUESTED_VERSION" "$install_dir"
-        echo "$install_dir" >> "$GITHUB_PATH"
-
     - name: Fetch immutable publication manifest
       shell: bash
       env:
@@ -39,6 +30,17 @@ runs:
         POLYGLOT_RUN_ID: ${{ inputs.run-id }}
         POLYGLOT_MANIFEST_HASH: ${{ inputs.manifest-hash }}
       run: "$GITHUB_ACTION_PATH/../scripts/fetch-publish-manifest.sh /tmp/polyglot-publish-manifest.json"
+
+    - name: Install the CLI bound to the authenticated manifest
+      shell: bash
+      env:
+        REQUESTED_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        version="$("$GITHUB_ACTION_PATH/../scripts/publication-cli-version.sh" /tmp/polyglot-publish-manifest.json "$REQUESTED_VERSION")"
+        install_dir="$RUNNER_TEMP/polyglot-publication/bin"
+        "$GITHUB_ACTION_PATH/../scripts/install-cli.sh" "$version" "$install_dir"
+        echo "$install_dir" >> "$GITHUB_PATH"
 
     - name: Materialize and verify approved catalogs
       id: publication

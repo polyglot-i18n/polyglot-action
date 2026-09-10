@@ -34,7 +34,7 @@ jobs:
         uses: polyglot-i18n/polyglot-action@v1
         with:
           check-mode: differential
-          version: '0.12.3'
+          version: '0.14.2'
           comment: 'false'
 ```
 
@@ -138,3 +138,39 @@ jobs:
 ```
 
 `sync` is gated to default-branch pushes, so un-merged PR translations are never written to shared memory. It needs `api-key` (push is authenticated); without one it logs a warning and skips.
+
+## Approved publication chooses its exact writer
+
+The `publication` composite first fetches the authenticated, digest-validated
+publication manifest, then installs the exact CLI version named by that
+manifest. Its optional `version` input is an assertion: if supplied, it must
+match the manifest. A mismatch fails before installation/materialization; it
+does not silently select a different writer. Downloads still require matching
+checksums, and the installed binary must report the requested version.
+
+This differs from the root Action's ordinary `version` input. Do not hardcode a
+second publication writer version that can disagree with the service. Reviewed
+catalog values, source identity, schema and the writer version belong to the
+same publication snapshot. Pending, rejected or stale-meaning values must not
+be included merely because translation generation succeeded.
+
+The check and managed catalog-sync CLI pins remain independent. The new context
+identity workflow needs the qualified context-capable CLI release to be
+available before the managed sync pin is advanced; manifest-based writer
+selection does not upgrade that pin automatically. CLI 0.14.0 is a release
+candidate in the companion branch, not an already-downloadable release.
+
+## Managed workflow pin and recovery order
+
+Use full immutable commit SHAs for managed callers. The reusable workflow pins
+reviewed Action implementations, and `managed-example-workflow.yml` pins the
+reviewed reusable workflow. Merge those commits without rewriting their SHAs,
+then coordinate the backend's trusted workflow SHA and caller adoption. A moving
+branch/tag or a CLI version bump alone does not update the managed trust policy.
+
+For a catalog-only PR, review the diff, merge deliberately, and verify the
+subsequent default-branch resync. If a merged publication must be reversed, use
+a reviewed Git revert and resync. A local `polyglot undo <run-id>` only recovers
+local CLI writes; it cannot undo a remote merge or hosted approval. The local
+service/CLI/Action qualification journey is separate from exercising a real
+connected Publisher App repository.
