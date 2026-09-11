@@ -32,3 +32,8 @@ cat <<EOF
 
 The differential check compared immutable base and head revisions. Source values are omitted from this comment.
 EOF
+
+if [ "$CONCLUSION" != "success" ] || [ "$HEAD_TOTAL" -gt 0 ]; then
+  echo ""
+  bash "$(dirname "${BASH_SOURCE[0]}")/format-remediation.sh"
+fi

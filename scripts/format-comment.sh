@@ -45,4 +45,4 @@ if command -v jq &> /dev/null && [ -f "$SCAN_FILE" ] && jq -e '.strings' "$SCAN_
 fi
 
 echo "---"
-echo "*Run \`polyglot wrap\` to wrap strings with i18n calls, then \`polyglot translate --languages <lang>\` to translate them.*"
+bash "$(dirname "${BASH_SOURCE[0]}")/format-remediation.sh"

@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       - name: Polyglot i18n Check
-        uses: polyglot-i18n/polyglot-action@v1
+        uses: polyglot-i18n/polyglot-action@v1.2.0
         with:
           check-mode: differential
           version: '0.14.2'
@@ -131,7 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: polyglot-i18n/polyglot-action@v1
+      - uses: polyglot-i18n/polyglot-action@v1.2.0
         with:
           api-key: ${{ secrets.POLYGLOT_API_KEY }}
           sync: 'true'
@@ -154,11 +154,21 @@ catalog values, source identity, schema and the writer version belong to the
 same publication snapshot. Pending, rejected or stale-meaning values must not
 be included merely because translation generation succeeded.
 
-The check and managed catalog-sync CLI pins remain independent. The new context
-identity workflow needs the qualified context-capable CLI release to be
-available before the managed sync pin is advanced; manifest-based writer
-selection does not upgrade that pin automatically. CLI 0.14.0 is a release
-candidate in the companion branch, not an already-downloadable release.
+The check and managed catalog-sync CLI pins remain independent. The current
+immutable managed workflow pins published CLI 0.14.2 for those operations;
+manifest-based writer selection does not upgrade that pin automatically.
+CLI 0.14.3 is also published and qualified as a publication writer by the
+backend. Backend deployment and trusted workflow adoption remain separate
+from the availability of these releases.
+
+## Action releases
+
+Use the immutable `v1.2.0` release for the current open Action, or pin its full
+commit SHA. Historical tags, including `v1`, retain their original commits;
+they do not receive these changes automatically. Existing callers keep their
+selected version until they update it. Managed callers must use the full
+reusable-workflow SHA and coordinated backend trust described below, not a
+semantic Action tag.
 
 ## Managed workflow pin and recovery order
 
