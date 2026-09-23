@@ -63,7 +63,9 @@ else
       BASE_SHA="$(json_value '.inputs.base_sha')"
       BRANCH="${GITHUB_REF_NAME:-}"
       if [ -z "$BASE_SHA" ] && valid_sha "$HEAD_SHA"; then
-        BASE_SHA="$(git -C "$WORKSPACE" rev-parse "${HEAD_SHA}^" 2>/dev/null || true)"
+        # Without --verify, rev-parse echoes the unresolved expression for a
+        # root commit, preventing the informational bootstrap below.
+        BASE_SHA="$(git -C "$WORKSPACE" rev-parse --verify --quiet "${HEAD_SHA}^" || true)"
       fi
       if [ -z "$BASE_SHA" ]; then
         BASE_SHA="$HEAD_SHA"
