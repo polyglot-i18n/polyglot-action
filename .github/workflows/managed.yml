@@ -202,7 +202,7 @@ jobs:
 
       - name: Run the managed Polyglot check
         if: inputs.operation == 'check'
-        uses: polyglot-i18n/polyglot-action@1e619910b2e33d15acc02372edcde7a35f86a251
+        uses: polyglot-i18n/polyglot-action@ba4e5873761a9c0832ccd3a68c9685db679fe322
         with:
           api-url: https://api.getpolyglot.ai
           check-mode: differential
