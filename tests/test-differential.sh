@@ -308,6 +308,29 @@ fi
 
 export GITHUB_EVENT_NAME=workflow_dispatch
 export GITHUB_EVENT_PATH="$TMP/events/dispatch.json"
+export GITHUB_SHA="$BASE"
+export GITHUB_OUTPUT="$TMP/dispatch-root.outputs"
+: > "$GITHUB_OUTPUT"
+"$ROOT/scripts/resolve-revisions.sh" "$TMP/repo"
+if grep -q '^resolution_ok=true$' "$GITHUB_OUTPUT" &&
+  grep -q "^base_sha=$BASE$" "$GITHUB_OUTPUT" &&
+  grep -q "^head_sha=$BASE$" "$GITHUB_OUTPUT" &&
+  grep -q '^informational=true$' "$GITHUB_OUTPUT"; then
+  pass "workflow dispatch on a root commit bootstraps an informational scan"
+else
+  fail "workflow dispatch on a root commit did not bootstrap"
+fi
+
+write_event "$TMP/events/invalid-dispatch.json" '{"inputs":{"base_sha":"invalid"}}'
+resolve_event workflow_dispatch "$TMP/events/invalid-dispatch.json" "$TMP/invalid-dispatch.outputs"
+if grep -q '^resolution_ok=false$' "$GITHUB_OUTPUT" &&
+  grep -q '^error_code=invalid_revision$' "$GITHUB_OUTPUT"; then
+  pass "an explicitly invalid dispatch base still fails closed"
+else
+  fail "an invalid explicit base was replaced with an informational fallback"
+fi
+
+export GITHUB_EVENT_PATH="$TMP/events/dispatch.json"
 export GITHUB_SHA=""
 export GITHUB_REF="refs/heads/main"
 export GITHUB_REF_NAME=main
