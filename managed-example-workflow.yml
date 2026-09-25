@@ -1,6 +1,10 @@
 # Copy this file to .github/workflows/polyglot.yml in the connected repository.
 # Polyglot deliberately pins the reusable workflow to a complete commit SHA.
 name: Polyglot
+# Names a dashboard-requested run after its Polyglot run ID so Polyglot can
+# follow it before it authenticates. Push and pull request runs keep GitHub's
+# usual title (an empty run-name falls back to it).
+run-name: ${{ inputs.run_id != '' && format('Polyglot {0} {1}', inputs.operation, inputs.run_id) || '' }}
 
 on:
   pull_request:
@@ -35,6 +39,17 @@ jobs:
       operation: ${{ inputs.operation || 'check' }}
       run_id: ${{ inputs.run_id || '' }}
 
+# Long-running checks: raise the job's own limit (up to 360 minutes on
+# GitHub-hosted runners) and the project's run budget in Polyglot together:
+#
+#   jobs:
+#     polyglot:
+#       uses: polyglot-i18n/polyglot-action/.github/workflows/managed.yml@<pinned SHA>
+#       with:
+#         operation: ${{ inputs.operation || 'check' }}
+#         run_id: ${{ inputs.run_id || '' }}
+#         timeout_minutes: 120
+#
 # Monorepos connect one Polyglot project per config root. A workflow job speaks
 # for exactly one of them, so name the root in each job:
 #

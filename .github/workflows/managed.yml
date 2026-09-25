@@ -21,6 +21,14 @@ on:
         required: false
         default: ""
         type: string
+      timeout_minutes:
+        description: >-
+          Job time limit in minutes (GitHub-hosted runners allow up to 360).
+          Raise it for known long-running checks, together with the project's
+          run budget in Polyglot, so GitHub reports an overlong run itself.
+        required: false
+        default: 30
+        type: number
 
 permissions:
   contents: read
@@ -30,7 +38,7 @@ jobs:
   polyglot:
     name: Polyglot / i18n
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.timeout_minutes }}
     steps:
       - name: Validate managed operation
         shell: bash
@@ -198,11 +206,16 @@ jobs:
             echo "finding_hash_key=$finding_hash_key"
             echo "manifest_hash=$(jq -r '.manifest_hash // empty' "$exchange_response")"
             echo "config_path=$(jq -r '.config_path // empty' "$exchange_response")"
+            # The revisions Polyglot recorded for this run (absent from older
+            # backends, in which case the Action resolves them from the event).
+            echo "head_sha=$(jq -r '.head_sha // empty | select(test("^[0-9a-f]{40}$"))' "$exchange_response")"
+            echo "base_sha=$(jq -r '.base_sha // empty | select(test("^[0-9a-f]{40}$"))' "$exchange_response")"
+            echo "base_pinned=$(jq -r 'if .base_pinned == true then "true" else "false" end' "$exchange_response")"
           } >> "$GITHUB_OUTPUT"
 
       - name: Run the managed Polyglot check
         if: inputs.operation == 'check'
-        uses: polyglot-i18n/polyglot-action@ba4e5873761a9c0832ccd3a68c9685db679fe322
+        uses: polyglot-i18n/polyglot-action@edc21a0f3fbe830e1af1160b2b430e5dfe6bd744
         with:
           api-url: https://api.getpolyglot.ai
           check-mode: differential
@@ -213,6 +226,10 @@ jobs:
           managed-run-id: ${{ steps.managed_auth.outputs.run_id }}
           managed-policy-hash: ${{ steps.managed_auth.outputs.policy_hash }}
           managed-finding-hash-key: ${{ steps.managed_auth.outputs.finding_hash_key }}
+          managed-head-sha: ${{ steps.managed_auth.outputs.head_sha }}
+          managed-base-sha: ${{ steps.managed_auth.outputs.base_sha }}
+          managed-base-pinned: ${{ steps.managed_auth.outputs.base_pinned }}
+          github_token: ${{ github.token }}
 
       - name: Sync the managed catalog inventory
         if: inputs.operation == 'catalog_sync'
