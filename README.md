@@ -42,7 +42,7 @@ jobs:
 
 1. Installs the requested checksum-verified Polyglot CLI release.
 2. Resolves explicit immutable base/head SHAs from `pull_request`, `merge_group`, `push`, or `workflow_dispatch`.
-3. Fails closed if either commit is unavailable; use `fetch-depth: 0` as shown above.
+3. Fetches a commit missing from the checkout by SHA (with the workflow token), and fails closed if a required commit no longer exists — for example after a history rewrite. A force-push, a new branch, or a root commit is scanned as an informational new baseline instead. `fetch-depth: 0` as shown above avoids extra fetches.
 4. Runs `polyglot check --format json` with the repository's `[ci]` policy. The default is `no-new`.
 5. Validates the complete v1 result schema and exit-code consistency.
 6. Emits GitHub annotations and, when an API key is configured, reports bounded run metadata even when comments are disabled.
