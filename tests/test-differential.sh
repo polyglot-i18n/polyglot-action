@@ -354,6 +354,101 @@ else
   fail "missing base was accepted"
 fi
 
+if grep -q '^error_message=.*force-push or history rewrite' "$TMP/missing.outputs" &&
+  ! grep -q 'fetch-depth' "$TMP/missing.outputs"; then
+  pass "a missing base says why instead of asking for fetch-depth: 0"
+else
+  fail "missing base message is misleading"
+fi
+
+echo "Test: force-pushes and new baselines bootstrap instead of blocking"
+write_event "$TMP/events/forced.json" "{\"before\":\"$(printf 'e%.0s' {1..40})\",\"after\":\"$NEW\",\"ref\":\"refs/heads/main\",\"forced\":true}"
+resolve_event push "$TMP/events/forced.json" "$TMP/forced.outputs"
+if grep -q '^resolution_ok=true$' "$TMP/forced.outputs" &&
+  grep -q "^base_sha=$NEW$" "$TMP/forced.outputs" &&
+  grep -q '^informational=true$' "$TMP/forced.outputs" &&
+  grep -q '^base_mode=bootstrap$' "$TMP/forced.outputs"; then
+  pass "a force-push with a vanished base bootstraps informationally"
+else
+  fail "a force-push was refused or compared against a missing base"
+fi
+
+POLYGLOT_MANAGED_BASE_SHA="$CLEAN" POLYGLOT_MANAGED_BASE_PINNED=false \
+  resolve_event push "$TMP/events/forced.json" "$TMP/forced-suggested.outputs"
+if grep -q "^base_sha=$CLEAN$" "$TMP/forced-suggested.outputs" &&
+  grep -q '^base_mode=suggested$' "$TMP/forced-suggested.outputs" &&
+  grep -q '^informational=false$' "$TMP/forced-suggested.outputs"; then
+  pass "a force-push compares with Polyglot's last completed analysis when it is an ancestor"
+else
+  fail "a force-push ignored the last completed analysis"
+fi
+
+echo "Test: managed dispatches use the run's recorded revisions"
+POLYGLOT_MANAGED_HEAD_SHA="$NEW" POLYGLOT_MANAGED_BASE_SHA="$BASE" POLYGLOT_MANAGED_BASE_PINNED=true \
+  resolve_event workflow_dispatch "$TMP/events/dispatch.json" "$TMP/managed-pinned.outputs"
+if grep -q "^base_sha=$BASE$" "$TMP/managed-pinned.outputs" &&
+  grep -q '^base_mode=exact$' "$TMP/managed-pinned.outputs"; then
+  pass "a pinned managed base is compared exactly (not the parent commit)"
+else
+  fail "a pinned managed base was ignored"
+fi
+
+POLYGLOT_MANAGED_HEAD_SHA="$NEW" \
+  resolve_event workflow_dispatch "$TMP/events/dispatch.json" "$TMP/managed-nobase.outputs"
+if grep -q "^base_sha=$NEW$" "$TMP/managed-nobase.outputs" &&
+  grep -q '^base_mode=bootstrap$' "$TMP/managed-nobase.outputs"; then
+  pass "a managed scan with no earlier analysis bootstraps instead of guessing the parent"
+else
+  fail "a managed scan without a base guessed HEAD^"
+fi
+
+UNRELATED="$(git -C "$TMP/repo" commit-tree "$(git -C "$TMP/repo" rev-parse "$BASE^{tree}")" -m unrelated-root)"
+POLYGLOT_MANAGED_HEAD_SHA="$NEW" POLYGLOT_MANAGED_BASE_SHA="$UNRELATED" POLYGLOT_MANAGED_BASE_PINNED=false \
+  resolve_event workflow_dispatch "$TMP/events/dispatch.json" "$TMP/managed-unrelated.outputs"
+if grep -q '^resolution_ok=true$' "$TMP/managed-unrelated.outputs" &&
+  grep -q '^base_mode=bootstrap$' "$TMP/managed-unrelated.outputs"; then
+  pass "a suggested base outside the branch history bootstraps instead of comparing unrelated histories"
+else
+  fail "an unrelated suggested base was compared"
+fi
+
+POLYGLOT_MANAGED_HEAD_SHA="$CLEAN" \
+  resolve_event workflow_dispatch "$TMP/events/dispatch.json" "$TMP/managed-mismatch.outputs"
+if grep -q '^resolution_ok=false$' "$TMP/managed-mismatch.outputs" &&
+  grep -q '^error_code=managed_revision_mismatch$' "$TMP/managed-mismatch.outputs"; then
+  pass "a checkout that differs from the managed run's head fails closed"
+else
+  fail "a head mismatch was accepted"
+fi
+
+echo "Test: a missing commit is fetched by SHA without making the clone shallow"
+git init --quiet --bare "$TMP/origin.git"
+git -C "$TMP/repo" push --quiet "$TMP/origin.git" "$NEW:refs/heads/main"
+git clone --quiet "$TMP/origin.git" "$TMP/clone"
+git -C "$TMP/clone" config user.email ci@example.com
+git -C "$TMP/clone" config user.name CI
+git -C "$TMP/clone" commit --quiet --allow-empty -m "only on origin"
+ONLY_ORIGIN="$(git -C "$TMP/clone" rev-parse HEAD)"
+git -C "$TMP/clone" push --quiet origin HEAD:refs/heads/elsewhere
+git -C "$TMP/clone" reset --quiet --hard "$NEW"
+git -C "$TMP/clone" branch --quiet -D elsewhere 2>/dev/null || true
+git -C "$TMP/clone" update-ref -d refs/remotes/origin/elsewhere 2>/dev/null || true
+git -C "$TMP/clone" reflog expire --expire=now --all
+git -C "$TMP/clone" gc --quiet --prune=now
+write_event "$TMP/events/fetch.json" "{\"before\":\"$NEW\",\"after\":\"$ONLY_ORIGIN\",\"ref\":\"refs/heads/main\"}"
+export GITHUB_EVENT_NAME=push
+export GITHUB_EVENT_PATH="$TMP/events/fetch.json"
+export GITHUB_OUTPUT="$TMP/fetch.outputs"
+: > "$GITHUB_OUTPUT"
+if ! git -C "$TMP/clone" cat-file -e "${ONLY_ORIGIN}^{commit}" 2>/dev/null &&
+  "$ROOT/scripts/resolve-revisions.sh" "$TMP/clone" &&
+  grep -q '^resolution_ok=true$' "$GITHUB_OUTPUT" &&
+  [ "$(git -C "$TMP/clone" rev-parse --is-shallow-repository)" = "false" ]; then
+  pass "a commit missing from the checkout is fetched by SHA and the clone stays complete"
+else
+  fail "fetch by SHA failed or made the clone shallow"
+fi
+
 echo "Test: annotations are bounded and omit raw source values"
 jq '.findings += [.findings[0]] | .delta.new = 2 | .head.total_findings += 1' "$TMP/new.json" > "$TMP/annotations.json"
 ANNOTATIONS="$(POLYGLOT_MAX_ANNOTATIONS=1 "$ROOT/scripts/emit-annotations.sh" "$TMP/annotations.json")"
