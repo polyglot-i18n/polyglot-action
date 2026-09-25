@@ -81,12 +81,15 @@ echo "Test: reusable workflow accepts no command, ref, policy, or API override"
 # config_path only selects among the config roots already connected for this
 # repository; the backend answers with the authoritative path the scan uses, and
 # an unconnected or unsafe value is refused at the exchange.
+# timeout_minutes is a number that only bounds the customer's own job duration
+# (GitHub enforces its own maximum); it selects no code, ref, or policy.
 INPUTS="$(awk '
   /^    inputs:$/ {inside = 1; next}
   inside && /^    [^ ]/ {inside = 0}
   inside && /^      [a-zA-Z0-9_-]+:$/ {key = $1; sub(/:$/, "", key); print key}
 ' "$MANAGED")"
-if [ "$INPUTS" = $'operation\nrun_id\nconfig_path' ] &&
+if [ "$INPUTS" = $'operation\nrun_id\nconfig_path\ntimeout_minutes' ] &&
+  grep -Eq '^        type: number$' "$MANAGED" &&
   ! grep -Eq 'pull_request_target|checkout-ref|command:|policy-json' "$MANAGED" "$CALLER"; then
   pass "public managed inputs stay a fixed, non-executable allowlist"
 else
