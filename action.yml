@@ -45,6 +45,21 @@ inputs:
     description: 'Run-bound HMAC key returned by the managed OIDC exchange'
     required: false
     default: ''
+  managed-head-sha:
+    description: 'Head commit recorded for the managed run; the checked-out head must match it'
+    required: false
+    default: ''
+  managed-base-sha:
+    description: >-
+      Base commit recorded for the managed run: compared exactly when
+      managed-base-pinned is true, otherwise a suggestion (the last completed
+      analysis on the branch) used only when it is an ancestor of the head
+    required: false
+    default: ''
+  managed-base-pinned:
+    description: 'Whether managed-base-sha must be compared exactly (true/false)'
+    required: false
+    default: 'false'
   fail_on_untranslated:
     description: 'Fail the check if untranslated strings are found'
     required: false
@@ -115,6 +130,13 @@ runs:
       if: inputs.check-mode == 'differential'
       id: revisions
       shell: bash
+      env:
+        POLYGLOT_MANAGED_HEAD_SHA: ${{ inputs.managed-head-sha }}
+        POLYGLOT_MANAGED_BASE_SHA: ${{ inputs.managed-base-sha }}
+        POLYGLOT_MANAGED_BASE_PINNED: ${{ inputs.managed-base-pinned }}
+        # Fetches a missing base/head commit by SHA; the checkout keeps no
+        # credentials of its own.
+        POLYGLOT_FETCH_TOKEN: ${{ inputs.github_token }}
       run: ${{ github.action_path }}/scripts/resolve-revisions.sh "$GITHUB_WORKSPACE"
 
     - name: Install Polyglot CLI
